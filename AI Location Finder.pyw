@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -39,8 +39,6 @@ PROVIDER_WARMUP_LOCK = threading.Lock()
 PROVIDER_WARMUP_STARTED = False
 PROVIDER_WARMUP_THREAD = None
 
-# The installer intentionally launches Python in isolated mode. Add only this
-# verified application folder so the bundled local modules remain importable.
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
@@ -235,7 +233,6 @@ def release_app_mutex():
 
 
 def _try_create_named_mutex(name: str):
-    """Return an acquired mutex handle or a stable reason it was unavailable."""
 
     if NATIVE_KERNEL32 is None:
         return "unavailable", None
@@ -272,7 +269,6 @@ def acquire_app_mutex() -> bool:
 
 
 def start_provider_runtime_warmup(warm_callback=None):
-    """Warm key-free provider runtime state once without delaying the UI."""
 
     global PROVIDER_WARMUP_STARTED, PROVIDER_WARMUP_THREAD
     callback = warm_callback or warm_provider_runtime
@@ -300,7 +296,6 @@ def _run_provider_runtime_warmup(callback):
     try:
         callback()
     except Exception:
-        # Warmup is optional and never changes the normal provider error path.
         pass
 
 
@@ -368,9 +363,6 @@ def _secret_entropy(purpose: str) -> bytes:
 
 
 def _secret_plaintext_prefix(purpose: str) -> str:
-    # This marker is inside DPAPI's authenticated ciphertext. Checking both
-    # the fixed magic and purpose rejects malformed or misplaced plaintext
-    # even if Windows returns bytes for a damaged stored blob.
     _secret_entropy(purpose)
     return PROTECTED_SECRET_MAGIC + purpose + "\0"
 
@@ -578,14 +570,9 @@ def load_saved_provider_key(settings, provider_id: str):
             raise OSError("Saved protected data could not be migrated.")
         key = legacy_plain
 
-    # The old single-key setting existed across both the original
-    # Anthropic-only build and a later OpenRouter build. Only an unmistakable
-    # Anthropic key may be migrated automatically. An OpenRouter or unknown
-    # key must never be relabeled and sent to Anthropic.
     migrate_anthropic = key.casefold().startswith("sk-ant-")
     if migrate_anthropic:
         settings.setValue(setting, protect_local_secret(key, purpose))
-        # Establish the encrypted copy on disk before deleting a legacy value.
         _sync_protected_settings(settings)
     settings.remove("api_key_protected")
     settings.remove("api_key")
@@ -611,7 +598,6 @@ def save_provider_key(settings, provider_id: str, key: str):
 
 
 def load_saved_extra_guidance(settings) -> str:
-    """Load optional user context without leaving it readable in settings.ini."""
     setting = "extra_guidance_protected"
     purpose = "extra-guidance"
     protected = str(settings.value(setting, "") or "").strip()
@@ -629,7 +615,6 @@ def load_saved_extra_guidance(settings) -> str:
     if not legacy_plain:
         return ""
     settings.setValue(setting, protect_local_secret(legacy_plain, purpose))
-    # Establish the encrypted copy on disk before deleting the plaintext value.
     _sync_protected_settings(settings)
     settings.remove("extra_guidance")
     _sync_protected_settings(settings)
@@ -650,7 +635,6 @@ def save_extra_guidance(settings, guidance: str):
 
 
 def saved_bool(settings, key: str, default=True) -> bool:
-    """Read an INI boolean without treating the text 'false' as truthy."""
 
     value = settings.value(key, default)
     if isinstance(value, bool):
@@ -710,7 +694,6 @@ EFFORT_EXPLANATIONS = {
 }
 
 def direct_providers():
-    """Return only first-party image providers, in a stable UI order."""
 
     indexed = {provider.id: provider for provider in PROVIDERS}
     chosen = tuple(
@@ -722,7 +705,6 @@ def direct_providers():
 
 
 def model_privacy_notice(model):
-    """Normalize current and legacy provider warning metadata for the UI."""
 
     warning = None
     helper = getattr(provider_catalog, "privacy_warning_for_model", None)
@@ -752,7 +734,6 @@ def model_privacy_notice(model):
 
 
 def accuracy_tip_sections():
-    """Return the shared tips as clearly separated, independently numbered groups."""
 
     heading_names = {
         "choose the right image": "Regular photos and screenshots",
@@ -798,7 +779,6 @@ def accuracy_tip_sections():
 
 
 def numbered_accuracy_tips() -> str:
-    """Render a plain-text version with numbering restarted for each section."""
 
     blocks = []
     for heading, tips in accuracy_tip_sections():
@@ -812,7 +792,6 @@ def numbered_accuracy_tips() -> str:
 
 
 def accuracy_tips_html() -> str:
-    """Render readable rich text without relying on QTextEdit list indentation."""
 
     sections = []
     for section_index, (heading, tips) in enumerate(accuracy_tip_sections()):
@@ -917,9 +896,6 @@ class AnalysisStats:
     usable: int = 0
 
 
-# These failures will not improve when the same key, model, and image are sent
-# again. Temporary transport/provider failures and unreadable model responses
-# are deliberately absent so a requested second or third check can still run.
 NON_RETRYABLE_PROVIDER_CATEGORIES = frozenset(
     {
         "access",
@@ -954,7 +930,6 @@ class ProviderPassOutcome:
 
 
 class CombinedCancelEvent:
-    """Expose one cancellation view without mutating the user's cancel flag."""
 
     def __init__(self, *events):
         self.events = tuple(event for event in events if event is not None)
@@ -986,7 +961,6 @@ def execute_provider_pass(
     clock,
     stop_event: Optional[threading.Event] = None,
 ):
-    """Run one provider call without touching UI objects or shared result lists."""
 
     if cancel_event is not None and cancel_event.is_set():
         outcome.error = AnalysisCancelled("Analysis cancelled.")
@@ -1234,7 +1208,6 @@ def analyse_image(
         return None
 
     def provider_failure(outcome: ProviderPassOutcome, has_future: bool) -> bool:
-        """Return True when analysis should stop with the latest usable result."""
 
         error = outcome.error
         if isinstance(error, AnalysisCancelled):
@@ -1621,7 +1594,6 @@ def write_report(
         )
         temporary_path = Path(temporary_name)
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            # fdopen owns the descriptor as soon as its context is entered.
             descriptor = None
             handle.write(report)
             handle.flush()
@@ -1665,7 +1637,6 @@ def load_image_file(path: Path) -> QImage:
 
 
 def source_file_is_available(path) -> bool:
-    """Check a selected file without letting a disconnected path crash the UI."""
 
     if path is None:
         return False
@@ -1680,7 +1651,6 @@ def image_visual_tokens(width: int, height: int) -> int:
 
 
 def image_upload_profile(model, effort_label: str, passes: int):
-    """Return the format, quality, and resize limits for one analysis setup."""
 
     normalized_effort = str(effort_label or "").strip().title()
     if normalized_effort not in UPLOAD_QUALITY_BY_EFFORT:
@@ -1699,8 +1669,6 @@ def image_upload_profile(model, effort_label: str, passes: int):
         "format": "JPEG" if model.provider_id == "xai" else "WEBP",
         "media_type": "image/jpeg" if model.provider_id == "xai" else "image/webp",
         "quality": quality,
-        # Anthropic resizes Haiku inputs to this envelope at every effort.
-        # Doing it once locally avoids uploading pixels the model will discard.
         "max_long_edge": (
             HAIKU_MAX_IMAGE_LONG_EDGE if is_haiku else MAX_IMAGE_LONG_EDGE
         ),
@@ -1775,8 +1743,6 @@ def encode_image(
         ),
     ).convertToFormat(QImage.Format_RGB32)
 
-    # Rebuild from pixels so uploaded bytes cannot retain EXIF, XMP, comments,
-    # source paths, or other metadata from the selected file.
     prepared = QImage(scaled.size(), QImage.Format_RGB32)
     prepared.fill(QColor("#000000"))
     painter = QPainter(prepared)
@@ -1800,8 +1766,6 @@ def encode_image(
             data = encode(profile["format"], profile["quality"])
             media_type = profile["media_type"]
         except AnalysisError:
-            # Keep a universally available fallback without ever returning to
-            # the original file bytes or their metadata.
             fallback_format = "PNG" if model.provider_id == "xai" else "JPEG"
             data = encode(fallback_format, -1 if fallback_format == "PNG" else 99)
             media_type = (
@@ -1998,7 +1962,6 @@ class ElidedPathLabel(QLabel):
 
 
 class EqualWidthTabBar(QTabBar):
-    """Keep category tabs truly equal even when their labels have different widths."""
 
     def tabSizeHint(self, index):
         hint = super().tabSizeHint(index)
@@ -2013,14 +1976,11 @@ class EqualWidthTabBar(QTabBar):
 
     def minimumTabSizeHint(self, index):
         hint = super().minimumTabSizeHint(index)
-        # The compact page can scroll; category labels must never force the
-        # whole desktop window wider than the available logical screen.
         hint.setWidth(1)
         return hint
 
 
 class ViewportPage(QWidget):
-    """Fill a scroll viewport unless the adaptive layout needs more room."""
 
     def sizeHint(self):
         hint = self.minimumSize().expandedTo(QSize(1, 1))
@@ -2031,7 +1991,6 @@ class ViewportPage(QWidget):
 
 
 def ui_animations_enabled() -> bool:
-    """Respect the app override and the Windows reduced-motion preference."""
 
     application = QApplication.instance()
     if application is not None and bool(application.property("reduceMotion")):
@@ -2053,7 +2012,6 @@ def ui_animations_enabled() -> bool:
 
 
 class RoundedScrollBar(QScrollBar):
-    """Paint a reliable pill-shaped handle while retaining native interaction."""
 
     def __init__(self, orientation, parent=None):
         super().__init__(orientation, parent)
@@ -2120,7 +2078,6 @@ class RoundedScrollBar(QScrollBar):
 
 
 class SmoothScrollController(QObject):
-    """Animate wheel and paging input while keeping direct dragging immediate."""
 
     DURATION_MS = 145
 
@@ -2248,7 +2205,6 @@ class SmoothScrollController(QObject):
 
 
 class ReachableScrollArea(QScrollArea):
-    """Keep nested controls genuinely reachable on compact logical screens."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2278,17 +2234,12 @@ class ReachableScrollArea(QScrollArea):
         if visible.contains(center):
             return
 
-        # Qt's default nested-scroll implementation can stop after exposing
-        # only an edge of a large child. Center the child when possible so its
-        # primary interaction area is actually visible, not merely adjacent
-        # to the viewport.
         if self.horizontalScrollBarPolicy() != Qt.ScrollBarAlwaysOff:
             horizontal.setValue(center.x() - viewport_size.width() // 2)
         vertical.setValue(center.y() - viewport_size.height() // 2)
 
 
 class SmoothTextEdit(QTextEdit):
-    """A text view with the same smooth scrolling used by the app panels."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2298,7 +2249,6 @@ class SmoothTextEdit(QTextEdit):
 
 
 class AppDialog(QDialog):
-    """A modal dialog that uses the app's own surface instead of native chrome."""
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent, Qt.Dialog | Qt.FramelessWindowHint)
@@ -2713,9 +2663,6 @@ class AnimatedDropdown(QWidget):
         self.button.setFocus(Qt.PopupFocusReason)
 
     def eventFilter(self, watched, event):
-        # Installing the button filter can synchronously deliver layout/focus
-        # events while this widget is still being constructed. Keep those
-        # harmless until the popup has been created.
         popup = getattr(self, "popup", None)
         if popup is not None and popup.isVisible():
             host_transition_events = (
@@ -2918,10 +2865,6 @@ class AnalysisWorker(QObject):
                 stats,
             )
         finally:
-            # The provider call has finished, so the worker no longer needs its
-            # private inputs. Python objects cannot be reliably wiped, but
-            # dropping these references promptly shortens their lifetime and
-            # releases the usually much larger encoded image immediately.
             self.api_key = ""
             self.extra_guidance = ""
             self.image_data = b""
@@ -3534,8 +3477,6 @@ class LocationFinder(QMainWindow):
         self.log_box.setObjectName("activityConsole")
         self.log_box.setReadOnly(True)
         self.log_box.setPlaceholderText("Progress, clues, errors, and saved reports appear here")
-        # Keep the normal desktop proportions unchanged when the footer joins
-        # this same continuous scroll page.
         self.log_box.setFixedHeight(120)
         left.addWidget(self.log_box, 1)
 
@@ -3896,13 +3837,9 @@ class LocationFinder(QMainWindow):
             try:
                 save_extra_guidance(self.settings, guidance)
             except OSError:
-                # The guidance remains available for this run even if Windows data
-                # protection is temporarily unavailable; never save it as plaintext.
                 pass
             else:
                 self._saved_extra_guidance = guidance
-                # save_extra_guidance verifies a sync, which also flushes the
-                # ordinary preferences already staged above.
                 guidance_synced = True
         if settings_dirty and not guidance_synced:
             self.settings.sync()
@@ -4208,7 +4145,6 @@ class LocationFinder(QMainWindow):
         self.save_preferences()
 
     def persist_preference_change(self, value=""):
-        """Save a choice that does not change the model-cost explanation."""
 
         del value
         self.save_preferences()
@@ -4256,7 +4192,6 @@ class LocationFinder(QMainWindow):
         self.save_preferences()
 
     def _show_selected_image_name(self):
-        """Keep the private full path internal while showing a useful filename."""
 
         if self.source_file is None:
             self.file_path_label.set_full_text(
@@ -4344,10 +4279,6 @@ class LocationFinder(QMainWindow):
                 self.page_layout.setStretch(1, 0)
                 self.left_panel.setMinimumWidth(0)
                 self.left_panel.setMaximumWidth(16777215)
-                # The map itself has a 320 px interaction minimum plus the
-                # panel's inset. On narrower desktops the outer page supplies
-                # horizontal scrolling instead of letting the map escape its
-                # rounded panel.
                 self.map_panel.setMinimumWidth(desired_map_minimum)
                 self.left_tabs.setSizePolicy(
                     QSizePolicy.Ignored,
@@ -4363,16 +4294,8 @@ class LocationFinder(QMainWindow):
                 self.left_panel.setMinimumWidth(390)
                 self.left_panel.setMaximumWidth(485)
                 if constrained:
-                    # A vertical page scrollbar consumes width only after the
-                    # first layout pass. Use the map's contained minimum here
-                    # so a one-pixel-short desktop does not also gain an
-                    # unnecessary horizontal scrollbar.
                     self.map_panel.setMinimumWidth(desired_map_minimum)
                 else:
-                    # Preserve the established two-column proportions whenever
-                    # the viewport can provide the map's 414 px preferred width.
-                    # At the exact 800 px boundary, yield only the small amount
-                    # needed to keep both panels contained and separated.
                     self.map_panel.setMinimumWidth(desired_map_minimum)
                 self.left_tabs.setSizePolicy(
                     QSizePolicy.Expanding,
@@ -4380,9 +4303,6 @@ class LocationFinder(QMainWindow):
                 )
                 self.left_tabs.setElideMode(Qt.ElideNone)
 
-            # QScrollArea must know the reflowed layout's real minimum size;
-            # this is what turns otherwise-clipped content into reachable scroll
-            # ranges on very small logical/high-DPI desktops.
             self.page_content.setMinimumSize(0, 0)
             self.page_content.setMaximumSize(16777215, 16777215)
             self.page_layout.invalidate()
@@ -5114,7 +5034,6 @@ class LocationFinder(QMainWindow):
 
 
 def run_bootstrap_isolation_regression() -> None:
-    """Ensure a non-isolated local launch re-execs before provider imports."""
 
     sentinel = "FLEECE_LOCATION_BOOTSTRAP_REGRESSION_CHILD"
     if os.environ.get(sentinel) == "1":
@@ -5127,7 +5046,7 @@ def run_bootstrap_isolation_regression() -> None:
         injected_path = temporary_path / "injected"
         injected_path.mkdir()
         (injected_path / "sitecustomize.py").write_text(
-            "# Deliberately harmless. Python loads this only in the first test process.\n",
+            "pass\n",
             encoding="utf-8",
         )
         (injected_path / "httpx.py").write_text(

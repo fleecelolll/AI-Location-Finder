@@ -1,14 +1,3 @@
-"""Current multimodal model catalog and direct HTTP provider adapters.
-
-This module deliberately has no GUI dependencies.  It uses only the Python
-standard library and ``httpx`` so the desktop app can offer several providers
-without installing every provider's SDK.
-
-The catalog is intentionally curated rather than dynamically populated.  The
-model IDs, capabilities, and prices were verified against each provider's
-official documentation on 2026-08-13.  Prices are estimates only and can
-change before this file is updated.
-"""
 
 from __future__ import annotations
 
@@ -37,7 +26,6 @@ UNSUPPORTED_PROVIDER_NOTES = {
 
 @dataclass(frozen=True, slots=True)
 class ProviderSpec:
-    """Connection and user-facing metadata for one API service."""
 
     id: str
     name: str
@@ -58,7 +46,6 @@ class ProviderSpec:
 
 @dataclass(frozen=True, slots=True)
 class PrivacyWarning:
-    """Confirmation data for a model with provider-specific privacy limits."""
 
     title: str
     message: str
@@ -71,7 +58,6 @@ class PrivacyWarning:
 
 @dataclass(frozen=True, slots=True)
 class ModelSpec:
-    """A verified image-input model exposed by one service."""
 
     provider_id: str
     id: str
@@ -104,24 +90,12 @@ class ModelSpec:
 
     @property
     def requires_privacy_confirmation(self) -> bool:
-        """Whether the UI must confirm a privacy warning before using the model."""
 
         return self.privacy_warning is not None
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class PreparedVisionImage:
-    """One immutable request image encoded for repeated analysis passes.
-
-    Build this object with :func:`prepare_vision_image` once, then pass it to
-    :func:`call_vision_model` for every analysis pass.  The raw image is not
-    retained.  The base64 value is intentionally excluded from ``repr`` so a
-    debugger or accidental object log does not print the image payload.
-
-    This class does not alter or inspect metadata inside arbitrary input
-    bytes.  The desktop app's image encoder performs that separate privacy
-    step before calling :func:`prepare_vision_image`.
-    """
 
     media_type: str
     base64_data: str = field(repr=False, compare=False)
@@ -144,7 +118,6 @@ class PreparedVisionImage:
 
 
 class ProviderRequestError(RuntimeError):
-    """An API failure containing only safe, user-facing information."""
 
     def __init__(
         self,
@@ -349,7 +322,6 @@ _ANTHROPIC_FABLE_PRIVACY_WARNING = PrivacyWarning(
 
 
 MODELS = (
-    # Direct Anthropic API.
     _model(
         "anthropic", "claude-fable-5", "Anthropic", "Claude Fable 5",
         "Ultra-premium", "maximum", "slow", "Anthropic's highest-capability widely released model.",
@@ -372,7 +344,6 @@ MODELS = (
         1.0, 5.0, 200_000, _EFFORT_BUDGET_ANTHROPIC, reasoning_style="token_budget",
     ),
 
-    # Direct OpenAI API.
     _model(
         "openai", "gpt-5.6-sol", "OpenAI", "GPT-5.6 Sol",
         "Ultra-premium", "maximum", "slow", "OpenAI's flagship GPT-5.6 model.",
@@ -389,7 +360,6 @@ MODELS = (
         0.2, 1.2, 1_050_000, _EFFORT_FULL,
     ),
 
-    # Direct Google Gemini Interactions API.
     _model(
         "google", "gemini-3.1-pro-preview", "Google", "Gemini 3.1 Pro",
         "Premium", "maximum", "slow", "Google's high-quality multimodal Pro preview.",
@@ -408,7 +378,6 @@ MODELS = (
         0.3, 2.5, 1_048_576, _EFFORT_GOOGLE_FOUR_LEVEL, reasoning_mandatory=True,
     ),
 
-    # Direct xAI Responses API.
     _model(
         "xai", "grok-4.6", "xAI", "Grok 4.6",
         "Premium", "high", "moderate", "SpaceXAI's current frontier multimodal model.",
@@ -512,13 +481,6 @@ def default_model(provider_id: str) -> ModelSpec:
 
 
 def privacy_warning_for_model(model: ModelSpec) -> Optional[PrivacyWarning]:
-    """Return the confirmation warning the UI should show before model use.
-
-    ``None`` means this catalog has no model-specific warning.  It does not
-    promise Zero Data Retention or replace the selected provider's account
-    terms.  The UI should continue showing ``ProviderSpec.privacy_note`` for
-    provider-wide details.
-    """
 
     if not isinstance(model, ModelSpec):
         raise TypeError("model must be a ModelSpec from this module.")
@@ -545,14 +507,6 @@ def native_effort(model: ModelSpec, effort_label: str) -> str | int:
 
 
 def _response_token_limit(model: ModelSpec, effort_label: str) -> int:
-    """Return a generous ceiling that cannot silently lower selected effort.
-
-    Haiku 4.5 is the only catalog model with explicit manual thinking budgets,
-    so its ceiling can safely reserve the complete configured thinking budget
-    plus at least 4,096 tokens for the bounded location object.  Adaptive and
-    provider-managed reasoners do not publish a fixed per-effort token budget;
-    they retain the existing 40,000-token ceiling to avoid truncating analysis.
-    """
 
     label = _normalize_effort_label(effort_label)
     if model.provider_id == "anthropic" and model.id == _ANTHROPIC_HAIKU_ID:
@@ -568,14 +522,6 @@ def estimate_cost(
     *,
     effort_label: Optional[str] = None,
 ) -> float:
-    """Return a rough planning estimate, not a quote or billing prediction.
-
-    The token defaults are deliberately simple because image tokenization,
-    hidden/reasoning-token billing, cache pricing, and actual answer length
-    vary by model and route.  Passing ``effort_label`` scales the assumed
-    output/reasoning usage; omitting it preserves the original Medium-effort
-    estimate and keeps existing callers backward compatible.
-    """
 
     if isinstance(passes, bool) or not isinstance(passes, int) or passes < 1:
         raise ValueError("Passes must be a positive whole number.")
@@ -623,13 +569,6 @@ def prepare_vision_image(
     image_data: bytes | bytearray | memoryview,
     media_type: str,
 ) -> PreparedVisionImage:
-    """Encode one image once for reuse across passes, without network access.
-
-    This helper retains only the base64 request representation, its declared
-    media type, an opaque per-preparation cache token, and byte length.  It
-    does not retain the original byte object, compute a stable image ID,
-    access settings, inspect API keys, or create an HTTP client.
-    """
 
     clean_media_type = _normalized_media_type(media_type)
     if clean_media_type not in _SUPPORTED_MEDIA_TYPES:
@@ -645,8 +584,6 @@ def prepare_vision_image(
     return PreparedVisionImage(
         media_type=clean_media_type,
         base64_data=base64.b64encode(raw).decode("ascii"),
-        # An opaque per-preparation token makes consecutive passes sticky
-        # without turning the screenshot into a stable cross-run identifier.
         cache_token=secrets.token_hex(24),
         byte_length=len(raw),
     )
@@ -673,7 +610,6 @@ def _prompt_cache_key(
     model: ModelSpec,
     prepared_image: PreparedVisionImage,
 ) -> str:
-    """Return a short, key-free routing hint for repeated-input cache hits."""
 
     material = (
         f"{model.provider_id}\x00{model.id}\x00{prepared_image.cache_token}"
@@ -697,11 +633,6 @@ def _prompt_with_effort(
     if not collapsed:
         return clean_prompt
 
-    # Every prompt rendered by location_prompts.py already carries one of
-    # these explicit effort sections.  Do not repeat 80 to 220 characters of
-    # adapter-side prose on every request.  Keep one compact note only for an
-    # external caller whose prompt cannot distinguish two UI levels that map
-    # to the same native ceiling.
     rendered_effort_markers = (
         f'<effort level="{label}">',
         f"# Analysis budget\n{label}:",
@@ -729,13 +660,6 @@ def _structured_format(schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def _anthropic_wire_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Return a raw-API-safe Anthropic structured-output schema.
-
-    Anthropic's SDK helpers transform constraints that the wire grammar does
-    not accept.  This app uses raw HTTP, so it must perform the relevant part
-    of that transformation itself.  Runtime result validation remains the
-    authority for these limits.
-    """
 
     transformed = _copy_schema(schema)
 
@@ -822,10 +746,6 @@ def _build_anthropic_payload(
     pass_marker = "\n\n<pass>\n"
     marker_index = rendered_prompt.find(pass_marker)
     if cache_repeated_input and marker_index > 0:
-        # Claude prompts keep role, security, task, model method, and effort in
-        # a stable prefix before <pass>.  Cache that prefix with the image so
-        # normal screenshots exceed Anthropic's minimum cacheable input.  The
-        # dynamic pass and prior-result data stay outside the breakpoint.
         text_contents.extend(
             (
                 {
@@ -838,9 +758,6 @@ def _build_anthropic_payload(
         )
     else:
         if cache_repeated_input:
-            # External prompts may not use the app's <pass> boundary.  Keep the
-            # conservative image-only breakpoint instead of guessing where
-            # their dynamic text starts.
             image_content["cache_control"] = {"type": "ephemeral", "ttl": "5m"}
         text_contents.append({"type": "text", "text": rendered_prompt})
 
@@ -859,18 +776,11 @@ def _build_anthropic_payload(
     }
     if model.reasoning_style == "token_budget":
         if effort == "disabled":
-            # Haiku Low is the explicit speed-first mode.  The tuned prompt,
-            # full image, and strict schema remain unchanged, but the optional
-            # hidden reasoning pass is skipped instead of paying the API's
-            # minimum 1,024-token extended-thinking budget.
             payload["thinking"] = {"type": "disabled"}
         else:
             payload["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": int(effort),
-                # The application never displays Claude's thinking summary.
-                # Omitting it preserves reasoning quality and reduces the wait
-                # before the structured answer is available.
                 "display": "omitted",
             }
     else:
@@ -927,16 +837,11 @@ def _build_openai_payload(
                 ],
             }
         ],
-        # Verbosity controls only the visible structured answer, not reasoning
-        # depth.  The strict schema still requires every location and evidence
-        # field while avoiding needless prose generation after analysis ends.
         "text": {"format": _structured_format(schema), "verbosity": "low"},
     }
     if prompt_cache_key is not None:
         payload["prompt_cache_key"] = prompt_cache_key
     if explicit_cache:
-        # GPT-5.6 charges 1.25x for cache writes.  Explicit-only mode prevents
-        # the changing pass suffix from becoming an additional implicit write.
         payload["prompt_cache_options"] = {"mode": "explicit"}
     return payload
 
@@ -962,9 +867,6 @@ def _build_google_payload(
         ],
         "generation_config": {
             "thinking_level": str(effort),
-            # Thought summaries are presentation output, not the model's raw
-            # thinking.  The app never displays them, so request none while
-            # preserving the selected thinking level in full.
             "thinking_summaries": "none",
         },
         "response_format": {
@@ -995,11 +897,6 @@ def _build_xai_payload(
     marker_index = rendered_prompt.find(round_marker)
     cacheable_prefix = prompt_cache_key is not None and marker_index > 0
     if cacheable_prefix:
-        # xAI caches exact leading messages. Keep the image and stable task
-        # instructions in the first message, then put the changing pass and
-        # prior-result data in a second message. The prompt_cache_key keeps all
-        # passes routed to a cache-friendly server. Concatenating the two text
-        # blocks reconstructs the exact original prompt.
         inputs = [
             {
                 "role": "user",
@@ -1068,7 +965,6 @@ def _request_headers(provider: ProviderSpec, api_key: str) -> dict[str, str]:
 
 
 def _get_http_client() -> httpx.Client:
-    """Return one thread-safe direct client with reusable HTTPS connections."""
 
     global _HTTP_CLIENT
     with _HTTP_CLIENT_LOCK:
@@ -1087,19 +983,11 @@ def _get_http_client() -> httpx.Client:
 
 
 def warm_provider_runtime() -> None:
-    """Construct reusable local HTTP and TLS state without making a request.
-
-    The function is idempotent and thread-safe.  It does not perform DNS,
-    open a socket, access settings, accept an API key, or contact a provider.
-    Calling it shortly after UI startup moves one-time local client setup off
-    the first analysis path.
-    """
 
     _get_http_client()
 
 
 def _close_http_client() -> None:
-    """Close the reusable connection pool during process shutdown or tests."""
 
     global _HTTP_CLIENT
     with _HTTP_CLIENT_LOCK:
@@ -1128,10 +1016,6 @@ def _post_json(
         raise ValueError("Timeout must be greater than zero.")
     timeout = httpx.Timeout(timeout_value, connect=min(30.0, timeout_value))
     try:
-        # Do not silently inherit system proxy or custom-CA environment variables.
-        # Location images, prompts, and API keys go directly to the selected
-        # service. The reusable client keeps only transport connections, never
-        # API keys or request payloads, between calls.
         response = _get_http_client().post(
             provider.request_url,
             headers=_request_headers(provider, api_key),
@@ -1158,7 +1042,6 @@ def _post_json(
 
 
 def _embedded_error_payload(payload: Mapping[str, Any]) -> Optional[dict[str, Any]]:
-    """Find a provider error object without copying unrelated response data."""
 
     error_payload: Any = payload.get("error")
     choices = payload.get("choices")
@@ -1170,7 +1053,6 @@ def _embedded_error_payload(payload: Mapping[str, Any]) -> Optional[dict[str, An
 
 
 def _safe_error_type(error_payload: Mapping[str, Any]) -> str:
-    """Read a non-sensitive provider type, preferring metadata.error_type."""
 
     metadata = error_payload.get("metadata")
     candidates: list[Any] = []
@@ -1189,13 +1071,6 @@ def _safe_error_type(error_payload: Mapping[str, Any]) -> str:
 
 
 def _private_error_signature(error_payload: Mapping[str, Any]) -> str:
-    """Return private categorization clues, excluding raw/flagged input fields.
-
-    A provider's short error message is inspected only to recognize safe error
-    categories.  It is never included in a raised exception, return value, or
-    log.  Metadata such as ``flagged_input``, ``raw``, and moderation reasons is
-    deliberately not read at all.
-    """
 
     values = (
         _safe_error_type(error_payload),
@@ -1219,14 +1094,12 @@ def _response_error_payload(response: httpx.Response) -> Optional[dict[str, Any]
 
 
 def _error_signature(response: httpx.Response) -> str:
-    """Return private, sanitized categorization clues; never expose to the UI."""
 
     error_payload = _response_error_payload(response)
     return _private_error_signature(error_payload) if error_payload else ""
 
 
 def _typed_error_category(error_type: str) -> Optional[str]:
-    """Map a provider's safe error type to one of the app's stable categories."""
 
     value = str(error_type or "").casefold()
     if not value:
@@ -1310,7 +1183,6 @@ def _signature_error_category(
     provider: ProviderSpec,
     model: ModelSpec,
 ) -> Optional[str]:
-    """Classify safe provider-message patterns without exposing the message."""
 
     value = str(signature or "").casefold()
     if not value:
@@ -1386,12 +1258,6 @@ def _preferred_error_category(
     typed_category: Optional[str],
     signature_category: Optional[str],
 ) -> Optional[str]:
-    """Combine machine-readable and message-derived categories safely.
-
-    A provider's documented error type is more reliable than words in its
-    human message. Retention notices are the one global exception. Fable's
-    explicit access wording may also refine a generic configuration error.
-    """
 
     if signature_category == "privacy":
         return "privacy"
@@ -1408,7 +1274,6 @@ def _safe_provider_error(
     model: ModelSpec,
     status: Optional[int],
 ) -> ProviderRequestError:
-    """Build an error using only catalog text and stable, non-sensitive facts."""
 
     if provider.id == "anthropic" and model.id == "claude-fable-5":
         privacy_message = (
@@ -1515,7 +1380,6 @@ def _raise_embedded_error(
     provider: ProviderSpec,
     model: ModelSpec,
 ) -> None:
-    """Translate a provider error returned inside an HTTP 200 response."""
 
     error_payload = _embedded_error_payload(payload)
     if error_payload is None:
@@ -1598,10 +1462,6 @@ def _parse_json_text(text: str, provider_name: str) -> dict[str, Any]:
         parsed = accept(value)
         if parsed is not None:
             recovered.append(parsed)
-    # Recovery is only used when the provider wrapped or prefixed its JSON.
-    # Ignore unrelated diagnostic objects and prefer the final object that
-    # resembles the required location-result schema. The stricter semantic
-    # validator still checks every field after this parser returns.
     for parsed in reversed(recovered):
         if "found" in parsed:
             return parsed
@@ -1708,8 +1568,6 @@ def _extract_google_response(payload: dict[str, Any]) -> dict[str, Any]:
         for content in content_items:
             if isinstance(content, dict) and content.get("type") == "text":
                 texts.append(str(content.get("text") or ""))
-    # Compatibility with pre-June-2026 Interactions responses is harmless and
-    # makes saved mock responses easier to inspect.
     if not texts:
         outputs = payload.get("outputs")
         if not isinstance(outputs, list):
@@ -1732,11 +1590,6 @@ def call_vision_model(
     cancel_event: Any = None,
     cache_repeated_input: bool = False,
 ) -> dict[str, Any]:
-    """Call a curated image-input model and return its structured JSON object.
-
-    API keys are used only in request headers.  They are never placed in a
-    payload, logged, included in an exception, or returned to the caller.
-    """
 
     if not isinstance(model, ModelSpec):
         raise TypeError("model must be a ModelSpec from this module.")
@@ -1804,7 +1657,7 @@ def call_vision_model(
             effort_label,
             cache_key,
         )
-    else:  # pragma: no cover - catalog self-test prevents this state.
+    else:
         raise ProviderRequestError("This provider is not supported.", "provider")
 
     response = _post_json(
@@ -1821,14 +1674,13 @@ def call_vision_model(
         result = _extract_responses_api_response(response_payload, provider.name)
     elif provider.id == "google":
         result = _extract_google_response(response_payload)
-    else:  # pragma: no cover - catalog self-test prevents this state.
+    else:
         raise ProviderRequestError("This provider is not supported.", "provider")
     _check_cancel(cancel_event)
     return result
 
 
 def self_test() -> bool:
-    """Run deterministic catalog/payload/parser checks without network access."""
 
     if tuple(provider.id for provider in PROVIDERS) != (
         "anthropic",
@@ -2476,10 +2328,6 @@ def self_test() -> bool:
     if direct_calls != ["anthropic", "openai", "google", "xai"]:
         raise RuntimeError("Direct provider runtime routing changed.")
 
-    # Exercise every catalog model at every generic effort through the complete
-    # mocked call path.  This prevents a speed optimization for one family from
-    # silently changing another model's effort, image, schema, privacy, cache,
-    # or response extraction behavior.
     secret_sentinel = "self-test-secret-not-a-real-key"
     matrix_requests: list[tuple[ProviderSpec, dict[str, Any]]] = []
 
@@ -2523,7 +2371,7 @@ def self_test() -> bool:
                     }],
                 }],
             }
-        else:  # pragma: no cover - the catalog check above prevents this.
+        else:
             raise RuntimeError("Unexpected provider in mocked matrix call.")
         return httpx.Response(200, json=body)
 

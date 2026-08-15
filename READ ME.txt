@@ -25,9 +25,9 @@ Run Installer.bat again to repair or update the private app components. Setup ke
 
 WHAT THE INSTALLER ADDS
 
-- Uses a compatible 64-bit Python 3.10 through 3.14 already on the PC when possible.
+- Installs or repairs official 64-bit Python 3.14.7 privately in .runtime\python.
 
-- Otherwise offers to download official Python 3.14.7 privately into this folder.
+- Does not use or modify Microsoft Store or system Python.
 
 - Installs pinned PySide6-Essentials and HTTPX components from official PyPI.
 
@@ -45,7 +45,7 @@ WHAT THE INSTALLER ADDS
 
 - Sets .pyw files to use that shared launcher for your Windows account.
 
-The launcher first looks for .venv\Scripts\pythonw.exe beside the selected .pyw file, then .runtime\python\pythonw.exe beside it. It never uses another tool's private Python.
+The launcher first looks for .runtime\python\pythonw.exe beside the selected .pyw file, then keeps .venv\Scripts\pythonw.exe only as a fallback for older Fleece Tool releases. It never uses another tool's private Python.
 
 Before the first Fleece Tools association change, setup exports existing per-user .pyw settings into the shared launcher folder. If setup cannot safely save an existing non-Fleece setting, it stops without overwriting it. If you choose a different .pyw app later, future setup runs leave that newer choice alone.
 
@@ -105,6 +105,8 @@ The restore helper stops without overwriting a newer non-Fleece choice. After re
 SOURCE AND RESPONSIBLE USE
 
 Source: https://github.com/fleecelolll/AI-Location-Finder
+
+The source is public for transparency and security review. Copyright 2026 Fleece. All rights reserved. No license is granted to use, modify, redistribute, sell, or publish derivative versions beyond the limited rights provided by the hosting platform.
 
 This project was made with AI.
 
