@@ -1,10 +1,3 @@
-"""Windows monitor discovery and cursor-free screen capture helpers.
-
-The normal Windows pointer is not part of a GDI BitBlt copy, so this module
-does not hide, move, or redraw the pointer. A cursor rendered by a game or
-another application is already part of that application's pixels and cannot
-be removed reliably at capture time.
-"""
 
 from __future__ import annotations
 
@@ -37,12 +30,11 @@ _SIGNED_INT_MAX = 2**31 - 1
 
 
 class ScreenCaptureError(RuntimeError):
-    """Raised when Windows cannot enumerate or capture the requested display."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
 class MonitorInfo:
-    """One selectable physical-pixel capture rectangle."""
 
     id: str
     label: str
@@ -73,13 +65,11 @@ class MonitorInfo:
 
     @property
     def physical_rect(self) -> tuple[int, int, int, int]:
-        """Return left, top, width, and height in physical desktop pixels."""
 
         return self.left, self.top, self.width, self.height
 
     @property
     def bounds(self) -> tuple[int, int, int, int]:
-        """Return left, top, right, and bottom in physical desktop pixels."""
 
         return self.left, self.top, self.right, self.bottom
 
@@ -109,7 +99,6 @@ def _windows_error(message: str) -> ScreenCaptureError:
 
 @contextmanager
 def _physical_pixel_context() -> Iterator[None]:
-    """Temporarily request physical coordinates for this thread when available."""
 
     if os.name != "nt":
         yield
@@ -121,10 +110,8 @@ def _physical_pixel_context() -> Iterator[None]:
     if set_context is not None:
         set_context.argtypes = (ctypes.c_void_p,)
         set_context.restype = ctypes.c_void_p
-        # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is the pseudo-handle -4.
         previous = set_context(ctypes.c_void_p(-4))
         if not previous:
-            # Per-monitor awareness is a safe fallback on older Windows builds.
             previous = set_context(ctypes.c_void_p(-3))
     try:
         yield
@@ -272,7 +259,6 @@ def _enumerate_monitor_records() -> tuple[_MonitorRecord, ...]:
 
 
 def enumerate_monitors() -> tuple[MonitorInfo, ...]:
-    """Return active monitors in Windows display-number order."""
 
     return _records_to_monitors(_enumerate_monitor_records())
 
@@ -299,14 +285,12 @@ def _all_monitors_target(monitors: tuple[MonitorInfo, ...]) -> MonitorInfo:
 
 
 def enumerate_capture_targets() -> tuple[MonitorInfo, ...]:
-    """Return individual monitors followed by the explicit All monitors choice."""
 
     monitors = enumerate_monitors()
     return (*monitors, _all_monitors_target(monitors))
 
 
 def primary_monitor(monitors: tuple[MonitorInfo, ...] | None = None) -> MonitorInfo:
-    """Return the current primary monitor, which is the safe capture default."""
 
     active = enumerate_monitors() if monitors is None else monitors
     for monitor in active:
@@ -321,7 +305,6 @@ def resolve_capture_target_from_targets(
     target: str | MonitorInfo | None,
     candidates: tuple[MonitorInfo, ...],
 ) -> MonitorInfo:
-    """Resolve a target against one already-enumerated display snapshot."""
 
     if not candidates:
         raise ScreenCaptureError("Windows did not report any active monitors.")
@@ -344,7 +327,6 @@ def resolve_saved_target_from_targets(
     saved_id: str | None,
     candidates: tuple[MonitorInfo, ...],
 ) -> MonitorInfo:
-    """Resolve a stored target from one snapshot, safely falling back to primary."""
 
     try:
         return resolve_capture_target_from_targets(saved_id, candidates)
@@ -355,14 +337,12 @@ def resolve_saved_target_from_targets(
 def resolve_capture_target(
     target: str | MonitorInfo | None = None,
 ) -> MonitorInfo:
-    """Resolve a saved target ID against the current Windows display layout."""
 
     candidates = enumerate_capture_targets()
     return resolve_capture_target_from_targets(target, candidates)
 
 
 def resolve_saved_target(saved_id: str | None) -> MonitorInfo:
-    """Resolve a stored ID, falling back to the current primary monitor if stale."""
 
     candidates = enumerate_capture_targets()
     return resolve_saved_target_from_targets(saved_id, candidates)
@@ -374,7 +354,6 @@ def _validated_capture_geometry(
     width: int,
     height: int,
 ) -> tuple[int, int, int, int, int]:
-    """Validate a rectangle before passing it to signed Win32 and Qt APIs."""
 
     try:
         left = operator.index(left)
@@ -406,7 +385,6 @@ def _copy_capture_buffer(
     height: int,
     byte_count: int,
 ) -> QImage:
-    """Copy a live top-down BGRX DIB into an owned QImage exactly once."""
 
     try:
         pixels = (ctypes.c_ubyte * byte_count).from_address(address)
@@ -579,20 +557,17 @@ def _capture_rectangle(left: int, top: int, width: int, height: int) -> QImage:
 def capture_screen(
     target: str | MonitorInfo | None = None,
 ) -> QImage:
-    """Capture one monitor or the full virtual desktop without the OS pointer."""
 
     current = resolve_capture_target(target)
     return _capture_rectangle(*current.physical_rect)
 
 
 def capture_virtual_screen() -> QImage:
-    """Compatibility helper that captures the full virtual desktop."""
 
     return capture_screen(ALL_MONITORS_ID)
 
 
 def image_to_png_bytes(image: QImage) -> bytes:
-    """Encode a QImage as complete PNG bytes suitable for an API upload."""
 
     if image.isNull():
         raise ScreenCaptureError("An empty image cannot be encoded.")
@@ -610,13 +585,11 @@ def image_to_png_bytes(image: QImage) -> bytes:
 def capture_screen_png(
     target: str | MonitorInfo | None = None,
 ) -> bytes:
-    """Capture the selected target and return PNG-compatible bytes."""
 
     return image_to_png_bytes(capture_screen(target))
 
 
 def safe_enumeration_test() -> tuple[MonitorInfo, ...]:
-    """Validate the active display list without capturing any desktop pixels."""
 
     targets = enumerate_capture_targets()
     if len(targets) < 2 or not targets[-1].is_all:
@@ -633,7 +606,6 @@ def safe_enumeration_test() -> tuple[MonitorInfo, ...]:
 
 
 def run_self_tests(include_system_enumeration: bool = True) -> tuple[str, ...]:
-    """Run offline tests. These tests never capture the real desktop."""
 
     checks: list[str] = []
     synthetic = _records_to_monitors(

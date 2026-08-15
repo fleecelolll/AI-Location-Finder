@@ -1,25 +1,3 @@
-"""Detailed online map with an instant, verified offline fallback.
-
-The street layer uses OpenStreetMap's standard raster tile service. Runtime
-requests are limited to the tiles visible in the interactive viewport, carry a
-named application user agent, and use Qt's HTTP-aware disk cache. The module
-does not prefetch tiles or offer bulk/offline downloads.
-
-The satellite layer uses Esri's public World Imagery service together with the
-public transportation and place-label reference services. These classic raster
-services are deprecated by Esri and can be withdrawn, so the street layer and
-the bundled Natural Earth map remain fully functional fallbacks.
-
-Official references:
-https://operations.osmfoundation.org/policies/tiles/
-https://esri.github.io/esri-leaflet/api-reference/layers/basemap-layer.html
-https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9
-https://doc.qt.io/qt-6/qnetworkdiskcache.html
-
-The bundled fallback is mechanically rendered from Natural Earth Vector
-v5.1.2 Admin-0 Countries and Lakes data. Natural Earth data is public domain:
-https://www.naturalearthdata.com/about/terms-of-use/
-"""
 
 from __future__ import annotations
 
@@ -137,7 +115,6 @@ TileKey = tuple[str, int, int, int, str]
 
 
 def _qt_object_token(qt_object) -> int:
-    """Return one identity for a Qt object even if PySide creates another wrapper."""
 
     if not shiboken6.isValid(qt_object):
         return id(qt_object)
@@ -172,7 +149,6 @@ def _validated_layer(layer: str) -> str:
 
 
 def coordinate_to_scene(latitude: float, longitude: float) -> QPointF:
-    """Project WGS84 coordinates onto the equirectangular fallback map."""
 
     latitude, longitude = _validated_coordinates(latitude, longitude)
     return QPointF(
@@ -182,7 +158,6 @@ def coordinate_to_scene(latitude: float, longitude: float) -> QPointF:
 
 
 def _mercator_project(latitude: float, longitude: float, zoom: float) -> QPointF:
-    """Project WGS84 coordinates to global Web Mercator pixels."""
 
     latitude, longitude = _validated_coordinates(latitude, longitude)
     latitude = max(-WEB_MERCATOR_MAX_LATITUDE, min(WEB_MERCATOR_MAX_LATITUDE, latitude))
@@ -197,7 +172,6 @@ def _mercator_project(latitude: float, longitude: float, zoom: float) -> QPointF
 
 
 def _mercator_unproject(x: float, y: float, zoom: float) -> tuple[float, float]:
-    """Convert global Web Mercator pixels back to WGS84 coordinates."""
 
     world_size = TILE_SIZE * (2.0 ** float(zoom))
     x = float(x) % world_size
@@ -212,7 +186,6 @@ def _regional_result_zoom(
     viewport_width: float,
     viewport_height: float,
 ) -> float:
-    """Return a regional result zoom fitted to the current viewport."""
 
     latitude, _ = _validated_coordinates(latitude, 0.0)
     mercator_latitude = max(
@@ -240,7 +213,6 @@ def _regional_result_zoom(
 
 
 def verify_map_asset(asset_path: Path | str = MAP_ASSET_PATH) -> bool:
-    """Return whether *asset_path* is the expected Natural Earth map."""
 
     path = Path(asset_path)
     try:
@@ -266,7 +238,6 @@ def verify_map_asset(asset_path: Path | str = MAP_ASSET_PATH) -> bool:
 
 
 def _fallback_pixmap() -> QPixmap:
-    """Create a low-detail world map if the bundled image is unavailable."""
 
     width = 1440
     height = 720
@@ -353,7 +324,6 @@ def _tile_url(key: TileKey) -> QUrl:
 
 
 def _decode_tile_pixmap(data: bytes) -> Optional[QPixmap]:
-    """Decode one provider tile after validating its header and exact dimensions."""
 
     if not 80 <= len(data) <= MAX_TILE_PAYLOAD_BYTES:
         return None
@@ -380,7 +350,6 @@ def _decode_tile_pixmap(data: bytes) -> Optional[QPixmap]:
 
 
 class _MapSymbolButton(QPushButton):
-    """Draw a crisp zoom symbol without depending on font glyph placement."""
 
     def __init__(self, symbol: str, parent=None):
         if symbol not in ("-", "+"):
@@ -413,7 +382,6 @@ class _MapSymbolButton(QPushButton):
 
 
 class WorldMapView(QWidget):
-    """Interactive street and satellite map with a local fallback underneath."""
 
     detail_ready_changed = Signal(bool)
     layer_changed = Signal(str)
@@ -718,39 +686,37 @@ class WorldMapView(QWidget):
             return
         viewport = self.rect()
         margin = 10
+        gap = 8
         self._controls.move(margin, margin)
 
         layer_x = viewport.width() - self._layer_controls.width() - margin
         layer_y = margin
-        if layer_x <= self._controls.geometry().right() + 8:
+        if layer_x <= self._controls.geometry().right() + gap:
             layer_x = margin
-            layer_y = self._controls.geometry().bottom() + 8
+            layer_y = self._controls.geometry().bottom() + gap
         self._layer_controls.move(max(margin, layer_x), layer_y)
 
-        max_attribution_width = max(180, min(560, viewport.width() - 2 * margin))
-        self._attribution_label.setMaximumWidth(max_attribution_width)
-        self._attribution_label.adjustSize()
-        self._attribution_label.move(
-            max(margin, viewport.width() - self._attribution_label.width() - margin),
-            max(margin, viewport.height() - self._attribution_label.height() - margin),
-        )
+        available_width = max(1, viewport.width() - 2 * margin)
+        column_width = max(1, (available_width - 2 * gap) // 3)
+        one_row = column_width >= 160
 
-        if not self._status_label.isHidden():
-            self._status_label.adjustSize()
-            self._status_label.move(
-                max(margin, (viewport.width() - self._status_label.width()) // 2),
-                max(
-                    margin,
-                    self._attribution_label.geometry().top()
-                    - self._status_label.height()
-                    - 7,
-                ),
-            )
+        def fit_wrapped_label(label, maximum_width):
+            maximum_width = max(1, int(maximum_width))
+            label.setWordWrap(False)
+            label.setMaximumWidth(16777215)
+            label.adjustSize()
+            if label.width() > maximum_width:
+                label.setWordWrap(True)
+                label.setMaximumWidth(maximum_width)
+                label.adjustSize()
+            else:
+                label.setMaximumWidth(maximum_width)
 
-        if not self._location_label.isHidden():
-            location_width = max(180, min(380, viewport.width() - 2 * margin))
-            self._location_label.setMaximumWidth(location_width)
-            available_text_width = max(120, location_width - 24)
+        def fit_location(maximum_width, word_wrap=False):
+            maximum_width = max(1, int(maximum_width))
+            self._location_label.setWordWrap(word_wrap)
+            self._location_label.setMaximumWidth(maximum_width)
+            available_text_width = max(40, maximum_width - 24)
             visible_name = self._location_label.fontMetrics().elidedText(
                 self._location_name,
                 Qt.ElideRight,
@@ -762,16 +728,66 @@ class WorldMapView(QWidget):
                 else self._coordinate_label
             )
             self._location_label.adjustSize()
-            bottom_limit = self._attribution_label.geometry().top() - 8
+
+        if one_row:
+            fit_wrapped_label(self._attribution_label, min(560, column_width))
             if not self._status_label.isHidden():
-                bottom_limit = min(bottom_limit, self._status_label.geometry().top() - 8)
-            self._location_label.move(
-                margin,
-                max(
-                    self._layer_controls.geometry().bottom() + 8,
-                    bottom_limit - self._location_label.height(),
-                ),
+                fit_wrapped_label(self._status_label, column_width)
+            if not self._location_label.isHidden():
+                fit_location(min(380, column_width))
+
+            bottom = viewport.height() - margin
+            self._attribution_label.move(
+                viewport.width() - self._attribution_label.width() - margin,
+                bottom - self._attribution_label.height(),
             )
+            if not self._status_label.isHidden():
+                self._status_label.move(
+                    (viewport.width() - self._status_label.width()) // 2,
+                    bottom - self._status_label.height(),
+                )
+            if not self._location_label.isHidden():
+                self._location_label.move(
+                    margin,
+                    bottom - self._location_label.height(),
+                )
+        else:
+            half_width = max(1, (available_width - gap) // 2)
+            fit_wrapped_label(self._attribution_label, half_width)
+            if not self._status_label.isHidden():
+                fit_wrapped_label(self._status_label, half_width)
+            if not self._location_label.isHidden():
+                if self._status_label.isHidden():
+                    fit_location(half_width, word_wrap=True)
+                else:
+                    fit_location(available_width)
+
+            bottom = viewport.height() - margin
+            self._attribution_label.move(
+                viewport.width() - self._attribution_label.width() - margin,
+                bottom - self._attribution_label.height(),
+            )
+            bottom_row_top = self._attribution_label.geometry().top()
+            if not self._status_label.isHidden():
+                self._status_label.move(
+                    margin,
+                    bottom - self._status_label.height(),
+                )
+                bottom_row_top = min(
+                    bottom_row_top,
+                    self._status_label.geometry().top(),
+                )
+            if not self._location_label.isHidden():
+                if self._status_label.isHidden():
+                    self._location_label.move(
+                        margin,
+                        bottom - self._location_label.height(),
+                    )
+                else:
+                    self._location_label.move(
+                        margin,
+                        bottom_row_top - gap - self._location_label.height(),
+                    )
 
         for overlay in (
             self._controls,
@@ -831,7 +847,6 @@ class WorldMapView(QWidget):
         self.reset_world()
 
     def _minimum_zoom_for_viewport(self) -> float:
-        """Return the lowest zoom that keeps one world covering the viewport."""
 
         largest_dimension = max(1.0, float(self.width()), float(self.height()))
         fit_zoom = math.log2(largest_dimension / float(TILE_SIZE))
@@ -842,7 +857,6 @@ class WorldMapView(QWidget):
         return max(self._minimum_zoom_for_viewport(), fitted_zoom)
 
     def _bounded_world_center(self, center: QPointF, zoom: float) -> QPointF:
-        """Clamp a global-pixel center so no edge can expose empty map space."""
 
         world_size = TILE_SIZE * (2.0 ** float(zoom))
         width = max(1.0, float(self.width()))
@@ -876,7 +890,6 @@ class WorldMapView(QWidget):
         )
 
     def _constrain_view(self):
-        """Normalize zoom and center after every state or viewport change."""
 
         minimum_zoom = self._minimum_zoom_for_viewport()
         if not math.isfinite(self._zoom):
@@ -994,7 +1007,6 @@ class WorldMapView(QWidget):
             self._dispose_reply(reply)
 
     def _retire_nonvisible_pending(self):
-        """Abort stale requests so rapid navigation cannot starve the new view."""
 
         self._tile_request_timer.stop()
         self._tile_retry_timer.stop()
@@ -1026,7 +1038,6 @@ class WorldMapView(QWidget):
             self._failed_until.pop(key, None)
 
     def _record_tile_failure(self, key: TileKey):
-        """Remember a transient failure without allowing navigation to grow state forever."""
 
         self._prune_failed_tiles()
         self._failed_until.pop(key, None)
@@ -1036,18 +1047,15 @@ class WorldMapView(QWidget):
 
     @staticmethod
     def _dispose_reply(reply):
-        """Schedule a live Qt reply for deletion without touching stale wrappers."""
 
         if not shiboken6.isValid(reply):
             return
         try:
             reply.deleteLater()
         except RuntimeError:
-            # Qt can destroy a reply between a queued signal and Python dispatch.
             return
 
     def _network_reply_destroyed(self, reply_id: int):
-        """Remove capacity bookkeeping even if Qt destroys a reply unexpectedly."""
 
         key = self._pending_by_reply_id.pop(reply_id, None)
         if key is None:
@@ -1066,7 +1074,6 @@ class WorldMapView(QWidget):
             self._pending_by_reply_id.pop(reply_id, None)
 
     def _network_reply_finished(self, reply: QNetworkReply):
-        """Resolve QNAM completion without a callback retaining the reply wrapper."""
 
         reply_id = _qt_object_token(reply)
         key = self._pending_by_reply_id.pop(reply_id, None)
@@ -1085,7 +1092,6 @@ class WorldMapView(QWidget):
         return any(key[0] == selected_layer and key[-1] == "base" for key in self._tiles)
 
     def _should_draw_offline_map(self) -> bool:
-        """Use offline artwork only initially, offline, or after a real tile outage."""
 
         return (
             not self._online_enabled
@@ -1097,7 +1103,6 @@ class WorldMapView(QWidget):
         self,
         entries: Optional[list[tuple[TileKey, QRectF]]] = None,
     ) -> bool:
-        """Return whether every visible base tile is in a failure cooldown."""
 
         visible_entries = self._visible_tile_entries() if entries is None else entries
         visible_base = {key for key, _ in visible_entries if key[-1] == "base"}
@@ -1112,7 +1117,6 @@ class WorldMapView(QWidget):
         key: TileKey,
         target: QRectF,
     ) -> bool:
-        """Draw same-layer cached detail while a replacement base tile loads."""
 
         layer, zoom, x, y, kind = key
         if kind != "base":
@@ -1256,7 +1260,6 @@ class WorldMapView(QWidget):
         self._arm_failed_tile_retry()
 
     def _arm_failed_tile_retry(self):
-        """Wake the map when a visible transient-failure cooldown expires."""
 
         if self._closing or not self._online_enabled:
             self._tile_retry_timer.stop()
@@ -1396,17 +1399,11 @@ class WorldMapView(QWidget):
                     try:
                         self._network_cache.remove(_tile_url(key))
                     except RuntimeError:
-                        # Shutdown can invalidate the cache between reply delivery
-                        # and this queued callback. The in-memory failure state is
-                        # already safe, so cache cleanup is best effort here.
                         pass
                 self._arm_failed_tile_retry()
                 self._update_overlay_texts()
                 self.update()
         except RuntimeError:
-            # A reply can be destroyed after its queued completion but before the
-            # Python callback runs. Bookkeeping is already clear, so repainting
-            # safely permits a future request without crashing the application.
             if not self._closing:
                 self.update()
         finally:
@@ -1680,7 +1677,6 @@ class WorldMapView(QWidget):
 
 
 def run_self_test() -> list[str]:
-    """Run deterministic checks with online tile access explicitly disabled."""
 
     app = QApplication.instance()
     owns_application = app is None
@@ -1779,6 +1775,31 @@ def run_self_test() -> list[str]:
         raise RuntimeError("Setting a location in offline mode made a tile request.")
     checks.append("exact result pin, label, and confidence radius state")
 
+    overlay_margin = 10
+    overlay_gap = 8
+    location_geometry = view._location_label.geometry()
+    status_geometry = view._status_label.geometry()
+    attribution_geometry = view._attribution_label.geometry()
+    expected_bottom = view.height() - overlay_margin - 1
+    if {
+        location_geometry.bottom(),
+        status_geometry.bottom(),
+        attribution_geometry.bottom(),
+    } != {expected_bottom}:
+        raise RuntimeError("Normal map overlays did not share one bottom edge.")
+    if (
+        location_geometry.left() != overlay_margin
+        or abs(status_geometry.center().x() - view.rect().center().x()) > 1
+        or attribution_geometry.right() != view.width() - overlay_margin - 1
+    ):
+        raise RuntimeError("Normal map overlays lost their left, center, or right anchors.")
+    if (
+        status_geometry.left() - location_geometry.right() - 1 < overlay_gap
+        or attribution_geometry.left() - status_geometry.right() - 1 < overlay_gap
+    ):
+        raise RuntimeError("Normal map overlays collided or lost their equal minimum gaps.")
+    checks.append("bottom-aligned left, center, and right map overlays")
+
     framing_cases = (
         ((60.3913, 5.3221), (720, 420), 4.757027787885948),
         ((-33.8688, 151.2093), (720, 420), 5.505961263679928),
@@ -1807,6 +1828,27 @@ def run_self_test() -> list[str]:
             raise RuntimeError("A regional result frame did not center its pin.")
         if view.network_request_count != 0:
             raise RuntimeError("Offline regional result framing made a tile request.")
+        if viewport_size == (320, 240):
+            compact_overlays = (
+                view._controls,
+                view._layer_controls,
+                view._location_label,
+                view._status_label,
+                view._attribution_label,
+            )
+            if any(
+                not overlay.isVisible()
+                or not view.rect().contains(overlay.geometry())
+                for overlay in compact_overlays
+            ):
+                raise RuntimeError("A compact map overlay became hidden or left the viewport.")
+            if any(
+                first.geometry().intersects(second.geometry())
+                for index, first in enumerate(compact_overlays)
+                for second in compact_overlays[index + 1 :]
+            ):
+                raise RuntimeError("Compact map overlays collided after responsive layout.")
+            checks.append("collision-free compact map overlays")
 
     if not framed_zooms[2] < _regional_result_zoom(0.0, 720, 420):
         raise RuntimeError("Compact result framing ignored the smaller viewport.")

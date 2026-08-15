@@ -1,26 +1,3 @@
-"""Provider and model tuned prompts for visual geolocation.
-
-This module has no GUI or network dependencies. It deliberately separates
-prompt construction from provider transport so the UI can select one verified
-profile and send the resulting text through any supported API route.
-
-Prompt design references, checked 2026-08-13:
-
-* OpenAI GPT-5.6 model guidance:
-  https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.6
-* Anthropic prompt engineering and XML organization guidance:
-  https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/overview
-  https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-tools
-* Google Gemini prompt design and media prompting guidance:
-  https://ai.google.dev/gemini-api/docs/prompting-strategies
-  https://ai.google.dev/gemini-api/docs/file-prompting-strategies
-* xAI image understanding guidance:
-  https://docs.x.ai/developers/model-capabilities/images/understanding
-
-The references inform prompt shape, not claims that a provider guarantees a
-correct location. Visual geolocation remains probabilistic and must report
-calibrated uncertainty.
-"""
 
 from __future__ import annotations
 
@@ -37,10 +14,6 @@ GEOGUESSR_MODE = "GeoGuessr screenshot"
 PROMPT_MODES = (GEOGUESSR_MODE, REGULAR_MODE)
 EFFORT_LEVELS = ("Low", "Medium", "High", "Ultra")
 
-# Baseline from the 2026-08-07 pre-compaction audit. It renders every model,
-# both modes, all four efforts, total pass counts 1 through 3, and every pass
-# within each count: 576 prompts with the same bounded sample clue data used by
-# run_self_tests. "Lexical units" is a provider-neutral token-count proxy.
 _PRE_COMPACTION_MATRIX_CHARS = 2_598_451
 _PRE_COMPACTION_MATRIX_LEXICAL_UNITS = 502_672
 _EXPECTED_MATRIX_PROMPTS = 576
@@ -48,7 +21,6 @@ _EXPECTED_MATRIX_PROMPTS = 576
 
 @dataclass(frozen=True, slots=True)
 class PromptProfile:
-    """A deliberate two-mode prompt profile for one catalog model variant."""
 
     identifier: str
     family: str
@@ -285,9 +257,6 @@ PROMPT_PROFILES = {
 }
 
 
-# Low effort with one check is the app's speed-first match path. These compact
-# directions stay deliberately model-specific instead of falling back to one
-# generic prompt for every provider.
 FAST_MODEL_TUNING = {
     "anthropic.claude-fable-5.v1": (
         "Use adaptive reasoning only until one distinctive clue combination resolves the scene. Do not build the broad inventory used by deeper Fable runs.",
@@ -374,12 +343,6 @@ def _model_search_text(model: Any) -> str:
 
 
 def profile_key_for_model(model: Any) -> str:
-    """Return the deliberate profile key used for a model.
-
-    Unknown models raise instead of silently falling back to a generic prompt.
-    This is intentional: a newly added catalog entry must receive explicit
-    regular-image and GeoGuessr tuning before it can be analyzed.
-    """
 
     search_text = _model_search_text(model)
     for profile_key, needles in _PROFILE_MATCHERS:
@@ -393,7 +356,6 @@ def profile_for_model(model: Any) -> PromptProfile:
 
 
 def prompt_profile_identifier(model: Any) -> str:
-    """Return a stable identifier suitable for logs and integration tests."""
 
     return profile_for_model(model).identifier
 
@@ -468,9 +430,6 @@ def _clean_text(value: Any, limit: int) -> str:
     text = _ascii_dashes(str(value or ""))
     if not text.isascii():
         text = unicodedata.normalize("NFKC", text)
-        # Strip invisible direction overrides and zero-width format controls
-        # from user clues and earlier model results. Ordinary ASCII takes the
-        # common fast path while Unicode place names and scripts remain intact.
         text = "".join(
             " " if unicodedata.category(character) in {"Cf", "Cs"} else character
             for character in text
@@ -492,7 +451,6 @@ _PRIOR_TEXT_LIMITS = {
 
 
 def _compact_prior_result(value: Any) -> Any:
-    """Keep adjudication evidence while bounding repeated-pass prompt growth."""
 
     if not isinstance(value, Mapping):
         return _clean_text(value, 600)
@@ -557,8 +515,6 @@ def _serialize_previous(previous_summary: Any) -> str:
             if isinstance(previous_summary, Sequence) and not isinstance(
                 previous_summary, (str, bytes)
             ):
-                # A three-pass run has at most two usable seed results. Retaining
-                # only the latest two also bounds callers that supply more.
                 serializable = [
                     _compact_prior_result(item) for item in previous_summary[-2:]
                 ]
@@ -614,9 +570,6 @@ def _pass_instruction(
 
 
 def _bounded_clue_payload(value: str, *, limit: int) -> str:
-    # Controlled XML-style data elements work consistently in all four prompt
-    # renderers. Escaping every variable value prevents a clue from closing its
-    # data element or manufacturing a new instruction section.
     return _clean_text(html.escape(value, quote=True), limit)
 
 
@@ -647,7 +600,6 @@ def _fast_untrusted_blocks(
     previous_summary: Any,
     guidance: str,
 ) -> str:
-    """Keep optional clue data useful without letting it defeat fast mode."""
 
     previous = _clean_text(_serialize_previous(previous_summary), 700)
     user_guidance = _clean_text(guidance, 320)
@@ -675,7 +627,6 @@ def _render_fast_prompt(
     previous_summary: Any,
     guidance: str,
 ) -> str:
-    """Render the model-specific Low plus one-check fast-match prompt."""
 
     try:
         regular_tuning, geoguessr_tuning = FAST_MODEL_TUNING[profile.identifier]
@@ -836,12 +787,6 @@ def build_analysis_prompt(
     effort: str = "Medium",
     total_passes: int | None = None,
 ) -> str:
-    """Build a safe, model-specific visual geolocation prompt.
-
-    ``model`` may be a catalog ``ModelSpec`` or a model ID string. ``mode``
-    accepts the two UI labels and common short aliases. ``previous_summary``
-    can be a prior result object, list, or text. No generic fallback exists.
-    """
 
     normalized_mode = _normalize_mode(mode)
     normalized_effort = _normalize_effort(effort)
@@ -906,7 +851,6 @@ Pick sensible settings
 
 
 def accuracy_tips_text() -> str:
-    """Return compact plain text suitable for the in-app Accuracy Tips tab."""
 
     return ACCURACY_TIPS_TEXT
 
@@ -917,7 +861,6 @@ def _assert(condition: bool, message: str) -> None:
 
 
 def run_self_tests(catalog: Sequence[Any] | None = None) -> list[str]:
-    """Run exhaustive offline prompt checks without network or paid API calls."""
 
     if catalog is None:
         from location_providers import MODELS
