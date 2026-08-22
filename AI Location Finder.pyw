@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -2776,6 +2776,11 @@ class AnalysisWorker(QObject):
     def cancel(self):
         self.cancel_event.set()
 
+    def clear_private_payload(self):
+        self.api_key = ""
+        self.extra_guidance = ""
+        self.image_data = b""
+
     def _safe_message(self, message, fallback="") -> str:
         return redact_secret_text(message, self.api_key) or fallback
 
@@ -2865,9 +2870,7 @@ class AnalysisWorker(QObject):
                 stats,
             )
         finally:
-            self.api_key = ""
-            self.extra_guidance = ""
-            self.image_data = b""
+            self.clear_private_payload()
 
 
 class LocationFinder(QMainWindow):
@@ -4694,16 +4697,31 @@ class LocationFinder(QMainWindow):
         except Exception as error:
             failed_worker = self.worker
             failed_thread = self.worker_thread
-            self.worker = None
-            self.worker_thread = None
-            self.running = False
 
             if failed_worker is not None:
                 failed_worker.cancel()
-            if failed_thread is not None and failed_thread.isRunning():
+                failed_worker.clear_private_payload()
+            thread_stopped = True
+            if failed_thread is not None:
                 failed_thread.requestInterruption()
                 failed_thread.quit()
-                failed_thread.wait(1000)
+                thread_stopped = failed_thread.wait(1000)
+            self.output_file = None
+            self._last_report_context = None
+            self._report_needs_save = False
+            if not thread_stopped:
+                self.find_button.setText("Stopping...")
+                self.find_button.setEnabled(False)
+                self.status_label.setText("Stopping after start failure")
+                self.set_map_subhead("World view - stopping safely")
+                self.append_log(
+                    "The analysis worker reported a start failure after launching. "
+                    "Waiting for it to stop safely."
+                )
+                return
+            self.worker = None
+            self.worker_thread = None
+            self.running = False
             for qt_object in (failed_worker, failed_thread):
                 if qt_object is not None:
                     try:
@@ -4711,9 +4729,6 @@ class LocationFinder(QMainWindow):
                     except RuntimeError:
                         pass
 
-            self.output_file = None
-            self._last_report_context = None
-            self._report_needs_save = False
             self.find_button.setText("Find Location")
             self.find_button.setEnabled(True)
             self.set_controls_enabled(True)
@@ -6813,17 +6828,28 @@ def run_self_test(folder: Path) -> int:
         window.output_folder = NoSaveFolderGuard()
         worker_globals = window.start_analysis.__globals__
         original_qthread = worker_globals["QThread"]
+        original_analysis_worker = worker_globals["AnalysisWorker"]
+        cleanup_snapshots = []
+
+        class CleanupProbeWorker(original_analysis_worker):
+            def clear_private_payload(self):
+                super().clear_private_payload()
+                cleanup_snapshots.append(
+                    (self.api_key, self.extra_guidance, self.image_data)
+                )
 
         class FailingStartThread(original_qthread):
             def start(self, *args, **kwargs):
                 del args, kwargs
                 raise RuntimeError("mocked worker start failure")
 
+        worker_globals["AnalysisWorker"] = CleanupProbeWorker
         worker_globals["QThread"] = FailingStartThread
         try:
             window.start_analysis()
         finally:
             worker_globals["QThread"] = original_qthread
+            worker_globals["AnalysisWorker"] = original_analysis_worker
             window.output_folder = real_output_folder
             window.save_result_toggle.setChecked(True)
         if (
@@ -6836,8 +6862,78 @@ def run_self_test(folder: Path) -> int:
             or window.progress_bar.value() != 0
             or window.status_label.text() != "Analysis could not start"
             or "No AI request was sent" not in window.log_box.toPlainText()
+            or cleanup_snapshots != [("", "", b"")]
         ):
-            raise RuntimeError("A QThread.start failure wedged the analysis UI.")
+            raise RuntimeError(
+                "A QThread.start failure wedged the UI or retained private payloads."
+            )
+
+        partial_start_seen = threading.Event()
+        partial_start_release = threading.Event()
+
+        class BlockingStartProbeWorker(original_analysis_worker):
+            @Slot()
+            def run(self):
+                partial_start_seen.set()
+                partial_start_release.wait(5)
+                self.clear_private_payload()
+                self.finished.emit(
+                    "cancelled",
+                    "Analysis cancelled.",
+                    None,
+                    AnalysisStats(self.passes),
+                )
+
+        class PartiallyFailingStartThread(original_qthread):
+            def run(self):
+                partial_start_seen.set()
+                partial_start_release.wait(5)
+
+            def start(self, *args, **kwargs):
+                super().start(*args, **kwargs)
+                if not partial_start_seen.wait(2):
+                    raise RuntimeError("mocked worker did not launch")
+                raise RuntimeError("mocked partial worker start failure")
+
+        active_partial_thread = None
+        worker_globals["AnalysisWorker"] = BlockingStartProbeWorker
+        worker_globals["QThread"] = PartiallyFailingStartThread
+        try:
+            window.start_analysis()
+            active_partial_thread = window.worker_thread
+            active_partial_worker = window.worker
+            if (
+                not window.running
+                or active_partial_worker is None
+                or active_partial_thread is None
+                or active_partial_worker.api_key
+                or active_partial_worker.extra_guidance
+                or active_partial_worker.image_data
+                or window.find_button.text() != "Stopping..."
+                or window.find_button.isEnabled()
+                or window.status_label.text() != "Stopping after start failure"
+            ):
+                raise RuntimeError(
+                    "A partially started analysis worker was deleted or retained private payloads."
+                )
+        finally:
+            worker_globals["QThread"] = original_qthread
+            worker_globals["AnalysisWorker"] = original_analysis_worker
+            partial_start_release.set()
+            if active_partial_thread is not None:
+                active_partial_thread.quit()
+                active_partial_thread.wait(3000)
+            QApplication.processEvents()
+        if (
+            window.running
+            or window.worker is not None
+            or window.worker_thread is not None
+            or window.find_button.text() != "Find Location"
+            or not window.find_button.isEnabled()
+        ):
+            raise RuntimeError(
+                "A partially started analysis worker did not clean up safely."
+            )
 
         window.append_log("<b>model text must stay plain</b>")
         if "<b>model text must stay plain</b>" not in window.log_box.toPlainText():

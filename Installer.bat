@@ -9,6 +9,11 @@ set "ASSUME_YES=0"
 set "SETUP_CHILD=0"
 set "SKIP_ASSOCIATION=0"
 set "TEST_ASSOCIATION=0"
+set "PATHS_VALIDATED="
+set "FFMPEG_DIR="
+set "DENO_DIR="
+set "HERCULES_DIR="
+set "LUA_DIR="
 
 :ParseArguments
 if "%~1"=="" goto ArgumentsReady
@@ -93,6 +98,7 @@ set "VENV_PY=%VENV%\Scripts\python.exe"
 set "VENV_PYW=%VENV%\Scripts\pythonw.exe"
 set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "CURL_EXE=%SystemRoot%\System32\curl.exe"
+set "ROBOCOPY_EXE=%SystemRoot%\System32\robocopy.exe"
 set "ASSOCIATION_SHARED_DIR=%LOCALAPPDATA%\Fleece Tools\Python Launcher"
 set "ASSOC_LAUNCHER_SHA256=E0CD6964B4A0EA2384F02A8225A1387191A1B099B1357538A4F02F23FB853C5F"
 set "ASSOC_RESTORE_SHA256=F25CFD12B724466A1A7C6DEA7F45866ED77C28712F7462DE05610D7A110297DA"
@@ -106,7 +112,7 @@ set "ASSOC_MANAGER_GZIP_B64_3=fnHk6grDaXuRCVAnm47Bli4juuV3WYbinC2JoISp3rMsklCb9D
 set "ASSOC_MANAGER_GZIP_B64_4=FxrJ3qn4kq+iEkoGPOjXSGuusfGDmkF3k5XTvBZXqE0qaYpmgFk1rEavmErUwNRvQ4u/LQ/0hK35wBOEVXEb/KdN3qqJnxK4Mc0Y1Vr32qz2CFuzeyUpPLN2tw+v/Fp9o5sYiWX75kfZXhvWi/DKm2ukSCQa0FiW22pJtsnQVmTXu+tEaws5S0CaDCoVzzJM3LipUpjrJbaS/Ipq0VxSdYvcoJwara2kgX3gAStzSLC4FEJoCNCaLHuAvdaaH/85gLj5oHsJZk9fCLJT2ZuHK1+kb4/cbepXfA9cNbUSFYz0CY6TJLzAxXs9TLKfBnVdcoUb9GpwzDY2KbbvPZVT+5WQacj2zaMi9yCzCTu2ZoFtRFAE3SWvwhATVJUhmA6nKc9Zoieyaq6nPR6U8brtL8aRZYuwf8r4vzYTLQnadGT7Ikw3LN+zE2kCkccO7jHOQmciL+PpwRSJNTaJCo8os9yKqjnPFfAlipWgZlRJ1RZMLMzhBtBH9rSbltrUrKab3iC2BQk0Qs6SVePDu14NbTeDBQ+IPD0DrOy7NWMyo19XZJtGwN7kb7fj+9MvK3sb5qiqZUvFe+mlBZY8SzHVnZs1U6DXr1XNU8/BtrN3FVDs81zsSe5F9P+ZrLffCXgm+y8KpoZnUqFzoKq/f5Vv7tql6jz1nOIeRSW1Rw/F5bC7uyyu1+v1xUWShGdni4WUQb9vXino7H624D1DqPRWpTDbhfaMS7WjUS8pFS/QZ1ipk1aZwfZgZ8k/YFi8YbRjqKNNUm0YSovUHiHY51nR8r15jlVEavlIZDNZNGNUmBKa+jFobF8dfmzGub957+RMIp//tV57YjtJOadZC3dfm+Pa4FfXPF+xC8LIDEU5/zUcpZkL2ymG0aVcUS1az7zJVHpl+SoXfGycnjlxyte84GMjUCqWla+AGXZVm9lp3f8A1DUbnFUmAAA="
 
 set "PYTHON_VERSION=3.14.7"
-set "PYSIDE_VERSION=6.11.1"
+set "PYSIDE_VERSION=6.11.2"
 set "PYSIDE_DISTRIBUTION=PySide6-Essentials"
 set "HTTPX_VERSION=0.28.1"
 set "PIP_VERSION=26.2.1"
@@ -135,6 +141,31 @@ set "PYTHON_SHA256=F6773983C8959D4281E48C4540CB0BDD23E42391E4E951CE17E7CEB52658F
 :ArchitectureReady
 if not exist "%POWERSHELL_EXE%" (
     set "FAIL_MESSAGE=Trusted Windows PowerShell is missing from the system folder."
+    goto Failed
+)
+if not exist "%ROBOCOPY_EXE%" (
+    set "FAIL_MESSAGE=Trusted Windows file-copy support is missing from the system folder."
+    goto Failed
+)
+call :ValidatePrivatePaths
+if errorlevel 1 (
+    set "FAIL_MESSAGE=The app folder or one of its private setup paths is not safe to modify. Extract a fresh copy to a normal folder and try again."
+    goto Failed
+)
+if exist "%LOG%" del /f /q "%LOG%" >nul 2>nul
+if exist "%LOG%" (
+    set "FAIL_MESSAGE=The previous setup log could not be replaced safely."
+    goto Failed
+)
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$stream=[IO.File]::Open($env:LOG,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read);$stream.Dispose()" >nul 2>nul
+if errorlevel 1 (
+    set "FAIL_MESSAGE=A fresh private setup log could not be created safely."
+    goto Failed
+)
+set "PATHS_VALIDATED=1"
+if exist "%RUNTIME%" call :ValidatePrivateTree "%RUNTIME%"
+if errorlevel 1 (
+    set "FAIL_MESSAGE=The private runtime contains an unsafe link, junction, or path. Extract a fresh copy and try again."
     goto Failed
 )
 call :ValidateSetupPaths
@@ -437,8 +468,8 @@ exit /b 1
 :Failed
 if not defined FAIL_MESSAGE set "FAIL_MESSAGE=Setup stopped because an unexpected error occurred."
 set "LOG_MESSAGE=ERROR: %FAIL_MESSAGE%"
-call :LogCurrent
-call :ReleaseSetupLock
+if defined PATHS_VALIDATED call :LogCurrent
+if defined PATHS_VALIDATED call :ReleaseSetupLock
 echo.
 echo  ==================================================
 echo                     SETUP STOPPED
@@ -447,9 +478,13 @@ echo.
 echo   %FAIL_MESSAGE%
 echo.
 echo   No success was reported because all checks did not pass.
-echo   The detailed log is here:
-echo.
-echo   "%LOG%"
+if defined PATHS_VALIDATED (
+    echo   The detailed log is here:
+    echo.
+    echo   "%LOG%"
+) else (
+    echo   No log was written because the private setup paths were not trusted.
+)
 echo.
 echo   Fix the listed problem, then run Installer.bat again.
 echo.
@@ -484,6 +519,10 @@ exit /b 1
 
 :EnsureAppClosed
 "%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "foreach($name in @('Global\FleeceAILocationFinderApp','Local\FleeceAILocationFinderApp')){try{$mutex=[Threading.Mutex]::OpenExisting($name);$mutex.Dispose();exit 1}catch [Threading.WaitHandleCannotBeOpenedException]{}catch{exit 1}};exit 0" >>"%LOG%" 2>&1
+exit /b %ERRORLEVEL%
+
+:ValidatePrivatePaths
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$volume=[IO.Path]::GetPathRoot($root).TrimEnd('\');if([string]::IsNullOrWhiteSpace($root)-or $root -ieq $volume){throw 'Unsafe project root.'};$rootItem=Get-Item -LiteralPath $root -Force;if(-not $rootItem.PSIsContainer-or($rootItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The project root must be a normal directory.'};$targets=@($env:RUNTIME,$env:VENV,$env:DOWNLOADS,$env:PYTHON_DIR,(Join-Path $env:PYTHON_DIR 'Lib'),$env:LOCAL_SITE,$env:SETUP_LOCK,($env:PYTHON_DIR+'.new'),($env:PYTHON_DIR+'.old'),($env:VENV+'.old'),(Join-Path $env:RUNTIME 'environment-before-package-repair'),(Join-Path $env:RUNTIME 'environment-before-package-repair.new'),(Join-Path $env:RUNTIME 'environment-before-package-repair.old'),(Join-Path $env:RUNTIME 'association-test'),(Join-Path $env:RUNTIME 'setup-check'));foreach($name in @('FFMPEG_DIR','DENO_DIR','HERCULES_DIR','LUA_DIR')){$value=[Environment]::GetEnvironmentVariable($name);if($value){$targets+=@($value,($value+'.new'),($value+'.old'),($value+'.extract'))}};$prefix=$root+'\';foreach($target in $targets){if([string]::IsNullOrWhiteSpace($target)){throw 'A private setup path is empty.'};$full=[IO.Path]::GetFullPath($target).TrimEnd('\');if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup path escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup directory is unsafe.'}}};foreach($file in @($env:LOG,$env:SETUP_MARKER,($env:SETUP_MARKER+'.new'),$env:SETUP_LOCK_OWNER,($env:SETUP_LOCK_OWNER+'.new'),$env:PIP_WHEEL)){if([string]::IsNullOrWhiteSpace($file)){continue};$full=[IO.Path]::GetFullPath($file);if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup file escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if($item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup file is unsafe.'}}};$local=[IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd('\');$association=[IO.Path]::GetFullPath($env:ASSOCIATION_SHARED_DIR).TrimEnd('\');$localItem=Get-Item -LiteralPath $local -Force;if(-not $localItem.PSIsContainer-or($localItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The local app-data root is unsafe.'};$localPrefix=$local+'\';if(-not $association.StartsWith($localPrefix,[StringComparison]::OrdinalIgnoreCase)){throw 'The shared launcher escaped local app data.'};$current=$local;foreach($part in ($association.Substring($localPrefix.Length)-split '\\')){if(-not $part){continue};$current=Join-Path $current $part;if(Test-Path -LiteralPath $current){$item=Get-Item -LiteralPath $current -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The shared launcher path is unsafe.'}}};exit 0" >nul 2>nul
 exit /b %ERRORLEVEL%
 
 :ValidateSetupPaths
@@ -715,25 +754,39 @@ if /I "%ENV_MODE%"=="venv" set "PACKAGE_BACKUP_PROBE=Scripts\python.exe"
 if /I "%ENV_MODE%"=="embedded" set "PACKAGE_BACKUP_PROBE=python.exe"
 if not defined PACKAGE_TARGET exit /b 1
 if not defined PACKAGE_BACKUP_PROBE exit /b 1
-if not exist "%PACKAGE_TARGET%" exit /b 1
 if exist "%PACKAGE_BACKUP%" (
+    call :ValidatePrivateTree "%PACKAGE_BACKUP%"
+    if errorlevel 1 exit /b 1
+    if not exist "%PACKAGE_BACKUP%\%PACKAGE_BACKUP_PROBE%" exit /b 1
     set "LOG_MESSAGE=Recovering the local package environment left by an interrupted repair."
     call :LogCurrent
     call :ReplaceDirectory "%PACKAGE_BACKUP%" "%PACKAGE_TARGET%"
     if errorlevel 1 exit /b 1
 )
+if not exist "%PACKAGE_TARGET%" exit /b 1
+call :ValidatePrivateTree "%PACKAGE_TARGET%"
+if errorlevel 1 exit /b 1
+if exist "%PACKAGE_BACKUP_NEW%" call :RemoveDirectoryRobust "%PACKAGE_BACKUP_NEW%"
+if exist "%PACKAGE_BACKUP_NEW%" exit /b 1
 set "LOG_MESSAGE=Creating a local rollback copy before package repair."
 call :LogCurrent
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $pending=$env:PACKAGE_BACKUP_NEW; $final=$env:PACKAGE_BACKUP; if(Test-Path -LiteralPath $pending){Remove-Item -LiteralPath $pending -Recurse -Force}; Copy-Item -LiteralPath $env:PACKAGE_TARGET -Destination $pending -Recurse -Force; if(-not(Test-Path -LiteralPath (Join-Path $pending $env:PACKAGE_BACKUP_PROBE))){throw 'The local rollback copy was incomplete.'}; Move-Item -LiteralPath $pending -Destination $final" >>"%LOG%" 2>&1
+"%ROBOCOPY_EXE%" "%PACKAGE_TARGET%" "%PACKAGE_BACKUP_NEW%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NJH /NJS /NP >>"%LOG%" 2>&1
+if errorlevel 8 exit /b 1
+call :ValidatePrivateTree "%PACKAGE_BACKUP_NEW%"
+if errorlevel 1 exit /b 1
+if not exist "%PACKAGE_BACKUP_NEW%\%PACKAGE_BACKUP_PROBE%" exit /b 1
+move "%PACKAGE_BACKUP_NEW%" "%PACKAGE_BACKUP%" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
 if not exist "%PACKAGE_BACKUP%" exit /b 1
+call :ValidatePrivateTree "%PACKAGE_BACKUP%"
+if errorlevel 1 exit /b 1
 if exist "%PACKAGE_BACKUP_NEW%" exit /b 1
 exit /b 0
 
 :FinishPackageTransaction
 set "PACKAGE_TRANSACTION_CODE=%~1"
 if "%PACKAGE_TRANSACTION_CODE%"=="0" (
-    if exist "%PACKAGE_BACKUP%" rmdir /s /q "%PACKAGE_BACKUP%" >>"%LOG%" 2>&1
+    if exist "%PACKAGE_BACKUP%" call :RemoveDirectoryRobust "%PACKAGE_BACKUP%"
     if exist "%PACKAGE_BACKUP%" exit /b 1
     exit /b 0
 )
@@ -798,6 +851,8 @@ if not errorlevel 1 exit /b 0
 :InstallFullEmbeddedPackages
 set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION% and httpx %HTTPX_VERSION% into embedded CPython from official PyPI."
 call :LogCurrent
+call :ResetEmbeddedPackages
+if errorlevel 1 exit /b 1
 "%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
 set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
 
@@ -819,6 +874,8 @@ exit /b 1
 goto RepairPackagesFinished
 
 :RepairEmbeddedPackages
+call :ResetEmbeddedPackages
+if errorlevel 1 exit /b 1
 "%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
 
 :RepairPackagesFinished
@@ -849,13 +906,64 @@ if not exist "%APP_PY%" exit /b 1
 "%APP_PY%" -I -c "import httpx, PySide6; from importlib.metadata import version; from PySide6.QtNetwork import QNetworkAccessManager; ok = version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%' and version('httpx') == '%HTTPX_VERSION%' and bool(QNetworkAccessManager); raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 
+:ResetEmbeddedPackages
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
+call :RemoveDirectoryRobust "%LOCAL_SITE%"
+if errorlevel 1 exit /b 1
+mkdir "%LOCAL_SITE%" >>"%LOG%" 2>&1
+if not exist "%LOCAL_SITE%" exit /b 1
+exit /b 0
+
+:RemoveDirectoryRobust
+set "REMOVE_TREE=%~1"
+if not defined REMOVE_TREE exit /b 1
+if not exist "%REMOVE_TREE%" exit /b 0
+call :ValidatePrivateTree "%REMOVE_TREE%"
+if errorlevel 1 exit /b 1
+set "EMPTY_TREE=%RUNTIME%\empty-%RANDOM%-%RANDOM%"
+if exist "%EMPTY_TREE%" exit /b 1
+mkdir "%EMPTY_TREE%" >>"%LOG%" 2>&1
+if not exist "%EMPTY_TREE%" exit /b 1
+call :ValidatePrivateTree "%EMPTY_TREE%"
+if errorlevel 1 exit /b 1
+"%ROBOCOPY_EXE%" "%EMPTY_TREE%" "%REMOVE_TREE%" /MIR /R:2 /W:1 /XJ /NFL /NDL /NJH /NJS /NP /NC /NS >nul 2>>"%LOG%"
+if errorlevel 8 exit /b 1
+rmdir /s /q "%REMOVE_TREE%" >>"%LOG%" 2>&1
+rmdir /s /q "%EMPTY_TREE%" >>"%LOG%" 2>&1
+if exist "%REMOVE_TREE%" exit /b 1
+if exist "%EMPTY_TREE%" exit /b 1
+exit /b 0
+
+:ValidatePrivateTree
+if "%~1"=="" exit /b 1
+set "VALIDATE_TREE=%~1"
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$project=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$root=[IO.Path]::GetFullPath($env:VALIDATE_TREE).TrimEnd('\');if(-not $root.StartsWith($project+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Private tree escaped the project root.'};$stack=New-Object 'System.Collections.Generic.Stack[string]';$stack.Push($root);while($stack.Count -gt 0){$directory=Get-Item -LiteralPath $stack.Pop() -Force;if(-not $directory.PSIsContainer-or($directory.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'Unsafe private directory.'};foreach($entryPath in [IO.Directory]::EnumerateFileSystemEntries($directory.FullName)){$entry=Get-Item -LiteralPath $entryPath -Force;if($entry.Attributes-band[IO.FileAttributes]::ReparsePoint){throw 'Unsafe private reparse point.'};if($entry.PSIsContainer){$stack.Push($entry.FullName)}}};exit 0" >>"%LOG%" 2>&1
+exit /b %ERRORLEVEL%
+
 :ReplaceDirectory
 set "REPLACE_NEW=%~1"
 set "REPLACE_TARGET=%~2"
 set "REPLACE_BACKUP=%~2.old"
 if not exist "%REPLACE_NEW%" exit /b 1
-if exist "%REPLACE_BACKUP%" rmdir /s /q "%REPLACE_BACKUP%" >>"%LOG%" 2>&1
-if exist "%REPLACE_BACKUP%" exit /b 1
+call :ValidatePrivateTree "%REPLACE_NEW%"
+if errorlevel 1 exit /b 1
+if exist "%REPLACE_TARGET%" call :ValidatePrivateTree "%REPLACE_TARGET%"
+if errorlevel 1 exit /b 1
+if exist "%REPLACE_BACKUP%" (
+    call :ValidatePrivateTree "%REPLACE_BACKUP%"
+    if errorlevel 1 exit /b 1
+    if exist "%REPLACE_TARGET%" (
+        call :RemoveDirectoryRobust "%REPLACE_BACKUP%"
+        if errorlevel 1 exit /b 1
+        if exist "%REPLACE_BACKUP%" exit /b 1
+    ) else (
+        move "%REPLACE_BACKUP%" "%REPLACE_TARGET%" >>"%LOG%" 2>&1
+        if errorlevel 1 exit /b 1
+        if exist "%REPLACE_BACKUP%" exit /b 1
+        call :ValidatePrivateTree "%REPLACE_TARGET%"
+        if errorlevel 1 exit /b 1
+    )
+)
 if not exist "%REPLACE_TARGET%" goto ReplaceMoveNew
 move "%REPLACE_TARGET%" "%REPLACE_BACKUP%" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
@@ -863,12 +971,24 @@ if errorlevel 1 exit /b 1
 :ReplaceMoveNew
 move "%REPLACE_NEW%" "%REPLACE_TARGET%" >>"%LOG%" 2>&1
 if errorlevel 1 goto ReplaceRollback
-if exist "%REPLACE_BACKUP%" rmdir /s /q "%REPLACE_BACKUP%" >>"%LOG%" 2>&1
+if exist "%REPLACE_BACKUP%" call :RemoveDirectoryRobust "%REPLACE_BACKUP%"
+if errorlevel 1 exit /b 1
+if exist "%REPLACE_BACKUP%" exit /b 1
 exit /b 0
 
 :ReplaceRollback
-if exist "%REPLACE_TARGET%" rmdir /s /q "%REPLACE_TARGET%" >>"%LOG%" 2>&1
-if exist "%REPLACE_BACKUP%" move "%REPLACE_BACKUP%" "%REPLACE_TARGET%" >>"%LOG%" 2>&1
+if exist "%REPLACE_TARGET%" call :RemoveDirectoryRobust "%REPLACE_TARGET%"
+if errorlevel 1 exit /b 1
+if exist "%REPLACE_TARGET%" exit /b 1
+if not exist "%REPLACE_BACKUP%" exit /b 1
+call :ValidatePrivateTree "%REPLACE_BACKUP%"
+if errorlevel 1 exit /b 1
+move "%REPLACE_BACKUP%" "%REPLACE_TARGET%" >>"%LOG%" 2>&1
+if errorlevel 1 exit /b 1
+if exist "%REPLACE_BACKUP%" exit /b 1
+if not exist "%REPLACE_TARGET%" exit /b 1
+call :ValidatePrivateTree "%REPLACE_TARGET%"
+if errorlevel 1 exit /b 1
 exit /b 1
 
 :DownloadAndVerify
@@ -1013,6 +1133,7 @@ if not exist "%LINK_PATH%" exit /b 1
 exit /b 0
 
 :LogCurrent
+if not defined PATHS_VALIDATED exit /b 1
 if not defined LOG_MESSAGE exit /b 0
 "%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $line='[{0:yyyy-MM-dd HH:mm:ss.fff}] {1}{2}' -f [DateTime]::Now,$env:LOG_MESSAGE,[Environment]::NewLine; [IO.File]::AppendAllText($env:LOG,$line,[Text.UTF8Encoding]::new($false))" >nul 2>nul
 set "LOG_MESSAGE="

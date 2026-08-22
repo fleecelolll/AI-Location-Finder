@@ -347,7 +347,7 @@ MODELS = (
     _model(
         "openai", "gpt-5.6-sol", "OpenAI", "GPT-5.6 Sol",
         "Ultra-premium", "maximum", "slow", "OpenAI's flagship GPT-5.6 model.",
-        5.0, 30.0, 1_050_000, _EFFORT_FULL,
+        4.0, 20.0, 1_050_000, _EFFORT_FULL,
     ),
     _model(
         "openai", "gpt-5.6-terra", "OpenAI", "GPT-5.6 Terra",
@@ -1773,7 +1773,7 @@ def self_test() -> bool:
         ("anthropic", "claude-opus-5"): (5.0, 25.0),
         ("anthropic", "claude-sonnet-5"): (2.0, 10.0),
         ("anthropic", _ANTHROPIC_HAIKU_ID): (1.0, 5.0),
-        ("openai", "gpt-5.6-sol"): (5.0, 30.0),
+        ("openai", "gpt-5.6-sol"): (4.0, 20.0),
         ("openai", "gpt-5.6-terra"): (2.0, 12.0),
         ("openai", "gpt-5.6-luna"): (0.2, 1.2),
         ("google", "gemini-3.1-pro-preview"): (2.0, 12.0),
