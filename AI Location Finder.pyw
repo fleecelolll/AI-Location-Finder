@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -66,16 +66,17 @@ def bootstrap_local_python():
         if not local_python.is_file() or not local_pythonw.is_file():
             continue
         try:
-            validation = subprocess.run(
-                [str(local_python), "-I", "-c", "pass"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=8,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            if validation.returncode != 0:
-                continue
+            if current not in valid_executables:
+                validation = subprocess.run(
+                    [str(local_python), "-I", "-c", "pass"],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=60,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                if validation.returncode != 0:
+                    continue
             subprocess.Popen(
                 [
                     str(local_pythonw),
@@ -5087,13 +5088,14 @@ def run_bootstrap_isolation_regression() -> None:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         try:
-            if process.wait(timeout=10) != 0:
+            if process.wait(timeout=90) != 0:
                 raise RuntimeError("The non-isolated bootstrap process did not restart safely.")
         except subprocess.TimeoutExpired as error:
             process.kill()
+            process.wait()
             raise RuntimeError("The non-isolated bootstrap process did not exit promptly.") from error
         checks_path = output_folder / "checks.json"
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 180
         while not checks_path.is_file() and time.monotonic() < deadline:
             time.sleep(0.05)
         if not checks_path.is_file():

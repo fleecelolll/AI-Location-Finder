@@ -12,3 +12,9 @@ __pycache__/
 *.py[cod]
 *.tmp
 *.bak
+*.error.txt
+*.obfuscated.lua
+*.obfuscated.luau
+*.fleecepack
+Thumbs.db
+Desktop.ini

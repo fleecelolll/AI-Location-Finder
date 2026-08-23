@@ -1,113 +1,46 @@
-FLEECE AI LOCATION FINDER
+AI LOCATION FINDER
 
 A little tool I made with AI to estimate real-world locations from screenshots and images locally on 64-bit Windows.
 
-
 INSTALL
 
-1. Keep every included file together in the extracted folder.
+1. Download the latest release ZIP.
+2. Extract the complete folder.
+3. Double-click Installer.bat.
+4. Press Y once to approve setup.
+5. Leave the setup window open until every check passes.
+6. Double-click the AI Location Finder shortcut created in the folder.
 
-2. Double click Installer.bat.
-
-3. Let setup finish every check. The first run can take a few minutes.
-
-4. Double click the "AI Location Finder" shortcut that setup creates in this folder.
-
-You can copy that shortcut to your Desktop or pin it to the taskbar. The shortcut launches the app with its own private Python environment.
-
-Keep the extracted folder path at 72 characters or fewer. Run Installer.bat again whenever setup needs repair or after moving the folder to a different location so the shortcut can be refreshed.
-
-
-UPDATES
-
-Run Installer.bat again to repair or update the private app components. Setup keeps your preferences and Windows-encrypted service keys and recreates the shortcut for the folder's current location.
-
-
-WHAT THE INSTALLER ADDS
-
-- Installs or repairs official 64-bit Python 3.14.7 privately in .runtime\python.
-
-- Does not use or modify Microsoft Store or system Python.
-
-- Installs pinned PySide6-Essentials and HTTPX components from official PyPI.
-
-- Verifies downloaded private-runtime files with SHA-256 checksums.
-
-- Compiles the app and its provider, prompt, map, and screen-capture modules.
-
-- Verifies Qt network support and the bundled offline map, then runs safe offline self-tests without capturing the desktop or contacting an AI provider.
-
-- Creates a normal double-clickable shortcut for the app.
-
-- Installs one shared per-user Fleece Tools launcher here:
-
-  %LOCALAPPDATA%\Fleece Tools\Python Launcher
-
-- Sets .pyw files to use that shared launcher for your Windows account.
-
-The launcher first looks for .runtime\python\pythonw.exe beside the selected .pyw file, then keeps .venv\Scripts\pythonw.exe only as a fallback for older Fleece Tool releases. It never uses another tool's private Python.
-
-Before the first Fleece Tools association change, setup exports existing per-user .pyw settings into the shared launcher folder. If setup cannot safely save an existing non-Fleece setting, it stops without overwriting it. If you choose a different .pyw app later, future setup runs leave that newer choice alone.
-
-Setup does not need administrator access, change PATH, install global Python packages, or install a background service.
-
+Keep the full extracted folder path at 72 characters or fewer so Windows can install the private packages reliably.
 
 USE
 
-1. Open AI Settings, choose one of the four direct AI services and an image-capable model, then save the API key for that service.
+1. Open AI Settings, choose a service and model, and save its API key.
+2. Choose one monitor, all monitors, or an image file.
+3. Choose the regular-image or GeoGuessr profile.
+4. Set the analysis effort and number of checks.
+5. Click Find Location and review the result and map.
 
-2. Choose one monitor, All monitors, or an existing image.
+SETUP DETAILS
 
-3. Choose Regular photo or screenshot or GeoGuessr screenshot.
+Setup keeps official Python 3.14.7, PySide6-Essentials, HTTPX, settings, and app-specific files private to this folder. It does not require administrator access, change PATH, or install global Python packages. Downloaded runtime archives are verified before use.
 
-4. Set the analysis effort and choose one to three AI checks.
+Setup creates and validates a normal AI Location Finder shortcut in this folder. Run Installer.bat again to repair setup or after moving the complete folder. Saved provider keys and preferences are preserved.
 
-5. Choose whether to save a text report after each result.
+PRIVACY AND REMOVAL
 
-6. Click Find Location.
+The app has no telemetry, analytics, advertisements, app accounts, or background image uploads. The selected image and analysis context go only to the provider you choose after you start an analysis. Review setup.log before sharing because it can contain local folder paths.
 
-7. Review the returned place, coordinates, confidence, evidence, and map pin.
-
-More AI checks normally increase cost and run time. Location results are estimates and can be confidently wrong.
-
-
-PRIVACY
-
-The app has no telemetry, analytics, advertisements, app accounts, or background image uploads.
-
-The selected image and analysis context are sent only to the AI service you choose and only after you start an analysis. Street and satellite map details require normal online tile requests to OpenStreetMap or Esri. The bundled Natural Earth map works offline. Review the in-app provider privacy note before sending a sensitive image.
-
-API keys and optional guidance are encrypted separately for the current Windows user in:
-
-  .runtime\settings.ini
-
-Reports are saved only when enabled and do not include the source image's full folder path.
-
+To remove this tool, close it and delete the extracted folder. The shared Fleece Tools .pyw launcher can be restored later with the helper in %LOCALAPPDATA%\Fleece Tools\Python Launcher after every Fleece Tool is closed.
 
 TROUBLESHOOTING
 
-If setup fails, check your internet connection and run Installer.bat again. Details are saved in setup.log. The log can include local folder paths, so review it before sharing it.
+If setup or the shortcut fails, review setup.log and run Installer.bat again. Success is shown only after the dependencies, offline self-tests, and shortcut all pass. Keep the complete extracted folder together.
 
-If the AI Location Finder shortcut does not open, rerun Installer.bat and make sure every final check passes. Setup recreates the shortcut for the folder's current location. Keep the complete folder together.
+Street and satellite maps need internet access. The bundled Natural Earth map remains available offline.
 
+SOURCE USE
 
-REMOVE
+Copyright 2026 Fleece. All rights reserved. The source is public only for transparency and security review. No permission is granted to copy, modify, redistribute, sell, or publish derivative versions. See LICENSE.
 
-To remove only AI Location Finder, close it and delete this folder. The app does not add itself to startup, install a Windows service, or create an uninstaller entry. Reports saved elsewhere and map tiles in Windows' application cache remain until you delete them separately.
-
-The shared .pyw launcher can be used by every Fleece Tool, so deleting one tool does not remove it. To restore the .pyw settings that existed before Fleece Tools first changed them, run:
-
-  %LOCALAPPDATA%\Fleece Tools\Python Launcher\Restore pyw association.cmd
-
-The restore helper stops without overwriting a newer non-Fleece choice. After restoring, and after removing every Fleece Tool that uses the launcher, you can delete the shared Python Launcher folder. Its registry backup files can include local program names and paths, so review them before sharing.
-
-
-SOURCE AND RESPONSIBLE USE
-
-Source: https://github.com/fleecelolll/AI-Location-Finder
-
-The source is public for transparency and security review. Copyright 2026 Fleece. All rights reserved. No license is granted to use, modify, redistribute, sell, or publish derivative versions beyond the limited rights provided by the hosting platform.
-
-This project was made with AI.
-
-Only analyze images you own or have permission to send to the selected AI service. Do not use an estimated location to stalk, harass, dox, trespass, or endanger anyone.
+This project was made with AI. Only analyze images you own or have permission to send. Never use an estimated location to stalk, harass, dox, trespass, or endanger anyone.
