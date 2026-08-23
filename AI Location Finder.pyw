@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -5049,65 +5049,177 @@ class LocationFinder(QMainWindow):
         event.accept()
 
 
-def run_bootstrap_isolation_regression() -> None:
-
-    sentinel = "FLEECE_LOCATION_BOOTSTRAP_REGRESSION_CHILD"
-    if os.environ.get(sentinel) == "1":
-        return
+def run_isolated_runtime_probe() -> None:
     runtime_python = Path(sys.executable).resolve()
     if not runtime_python.is_file():
         raise RuntimeError("The local Python executable was unavailable for the isolation test.")
+    runtime_pythonw = runtime_python.with_name("pythonw.exe")
+    if not runtime_pythonw.is_file():
+        raise RuntimeError("The local windowless Python executable was unavailable for the isolation test.")
+    private_packages = Path(sys.prefix).resolve() / "Lib" / "site-packages"
+    if APP_DIR not in private_packages.parents or not private_packages.is_dir():
+        raise RuntimeError("The private package folder was unavailable for the isolation test.")
     with tempfile.TemporaryDirectory(prefix="fleece-location-isolation-") as temporary:
         temporary_path = Path(temporary)
         injected_path = temporary_path / "injected"
         injected_path.mkdir()
+        injection_marker = temporary_path / "injection-loaded.txt"
         (injected_path / "sitecustomize.py").write_text(
-            "pass\n",
+            "from pathlib import Path\n"
+            "import os\n"
+            "Path(os.environ['FLEECE_LOCATION_INJECTION_MARKER']).write_text('sitecustomize', encoding='utf-8')\n"
+            "raise RuntimeError('PYTHONPATH sitecustomize injection was imported')\n",
             encoding="utf-8",
         )
         (injected_path / "httpx.py").write_text(
+            "from pathlib import Path\n"
+            "import os\n"
+            "Path(os.environ['FLEECE_LOCATION_INJECTION_MARKER']).write_text('httpx', encoding='utf-8')\n"
             "raise RuntimeError('PYTHONPATH httpx injection was imported')\n",
             encoding="utf-8",
         )
-        output_folder = temporary_path / "result"
+        result_path = temporary_path / "result.json"
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(injected_path)
-        environment[sentinel] = "1"
-        process = subprocess.Popen(
-            [
-                str(runtime_python),
-                str(Path(__file__).resolve()),
-                "--self-test",
-                str(output_folder),
-            ],
-            cwd=str(APP_DIR),
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        environment["FLEECE_LOCATION_INJECTION_MARKER"] = str(injection_marker)
+        probe = (
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "result_path=Path(sys.argv[1])\n"
+            "injected=Path(sys.argv[2]).resolve()\n"
+            "expected=Path(sys.argv[3]).resolve()\n"
+            "private_packages=Path(sys.argv[4]).resolve()\n"
+            "try:\n"
+            "    import httpx, PySide6\n"
+            "    httpx_module=Path(httpx.__file__).resolve()\n"
+            "    pyside_module=Path(PySide6.__file__).resolve()\n"
+            "    paths=[Path(value).resolve() for value in sys.path if value]\n"
+            "    result={'isolated':sys.flags.isolated == 1, "
+            "'private_executable':Path(sys.executable).resolve() == expected, "
+            "'pythonpath_rejected':injected not in paths, "
+            "'module_injection_rejected':injected not in httpx_module.parents, "
+            "'private_httpx':private_packages in httpx_module.parents, "
+            "'private_pyside':private_packages in pyside_module.parents}\n"
+            "except BaseException as error:\n"
+            "    result={'error':type(error).__name__}\n"
+            "result_path.write_text(json.dumps(result), encoding='utf-8')\n"
+            "raise SystemExit(1 if 'error' in result else 0)"
         )
         try:
-            if process.wait(timeout=90) != 0:
-                raise RuntimeError("The non-isolated bootstrap process did not restart safely.")
+            completed = subprocess.run(
+                [
+                    str(runtime_pythonw),
+                    "-I",
+                    "-c",
+                    probe,
+                    str(result_path),
+                    str(injected_path),
+                    str(runtime_pythonw),
+                    str(private_packages),
+                ],
+                cwd=str(APP_DIR),
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
         except subprocess.TimeoutExpired as error:
-            process.kill()
-            process.wait()
-            raise RuntimeError("The non-isolated bootstrap process did not exit promptly.") from error
-        checks_path = output_folder / "checks.json"
-        deadline = time.monotonic() + 180
-        while not checks_path.is_file() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        if not checks_path.is_file():
-            raise RuntimeError("The isolated bootstrap child did not complete its offline self-test.")
+            raise RuntimeError("The isolated windowless-runtime probe did not exit promptly.") from error
+        except OSError as error:
+            raise RuntimeError("The isolated windowless runtime could not start.") from error
+        if injection_marker.exists():
+            raise RuntimeError("The isolated private runtime loaded an injected PYTHONPATH module.")
+        if not result_path.is_file():
+            raise RuntimeError(
+                f"The isolated windowless-runtime probe exited with code {completed.returncode} without a result."
+            )
         try:
-            result = json.loads(checks_path.read_text(encoding="utf-8"))
+            result = json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError("The isolated bootstrap child did not write valid test output.") from error
-        if result.get("passed") is not True:
-            raise RuntimeError("The isolated bootstrap child reported a failed self-test.")
-        if result.get("network_requests") != 0 or result.get("real_desktop_captures") != 0:
-            raise RuntimeError("The bootstrap isolation test made a network request or desktop capture.")
+            raise RuntimeError("The isolated windowless-runtime probe wrote invalid output.") from error
+        if "error" in result:
+            error_name = result.get("error")
+            if not isinstance(error_name, str) or not error_name.isidentifier():
+                error_name = "unknown error"
+            raise RuntimeError(
+                f"The isolated windowless runtime could not load its private packages ({error_name})."
+            )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"The isolated windowless-runtime probe exited with code {completed.returncode}."
+            )
+        expected_result = {
+            "isolated": True,
+            "private_executable": True,
+            "pythonpath_rejected": True,
+            "module_injection_rejected": True,
+            "private_httpx": True,
+            "private_pyside": True,
+        }
+        if result != expected_result:
+            raise RuntimeError("The isolated windowless-runtime probe reported an unsafe launch state.")
+
+
+def write_self_test_output(folder: Path, checks: list[str], label: str) -> int:
+    output = {
+        "app": APP_NAME,
+        "version": APP_VERSION,
+        "passed": True,
+        "network_requests": 0,
+        "real_desktop_captures": 0,
+        "providers": len(direct_providers()),
+        "model_entries": len(MODELS),
+        "checks": checks,
+    }
+    checks_path = folder / "checks.json"
+    checks_path.write_text(
+        json.dumps(output, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    if not checks_path.is_file() or checks_path.stat().st_size < 100:
+        raise RuntimeError("The verification result could not be saved.")
+    print(f"{APP_NAME} {label} passed ({len(checks)} checks).")
+    return 0
+
+
+def run_install_check(folder: Path) -> int:
+    folder = Path(folder).resolve()
+    folder.mkdir(parents=True, exist_ok=True)
+    checks = []
+
+    run_isolated_runtime_probe()
+    checks.append("isolated windowless runtime uses private packages and rejects PYTHONPATH injection")
+
+    if not provider_self_test():
+        raise RuntimeError("The provider catalog install check did not complete.")
+    checks.append(f"{len(MODELS)} curated direct-provider models and offline payloads")
+
+    map_checks = run_map_self_test()
+    if not verify_map_asset() or len(map_checks) < 8:
+        raise RuntimeError("The offline map install check did not complete.")
+    checks.append("detailed street, satellite, and offline map components")
+
+    capture_checks = run_capture_self_tests(include_system_enumeration=False)
+    if len(capture_checks) < 6:
+        raise RuntimeError("The portable screen-capture install check did not complete.")
+    checks.append("portable monitor geometry and cursor-free image encoding")
+
+    prompt_checks = run_prompt_self_tests(MODELS)
+    if len(prompt_checks) < 9:
+        raise RuntimeError("The model prompt install check did not complete.")
+    checks.append("model-specific privacy, safety, and structured-result prompts")
+
+    sample = QImage(640, 360, QImage.Format_RGB32)
+    sample.fill(QColor("#101010"))
+    image_data, media_type, width, height = encode_image(sample)
+    if not image_data or media_type not in {"image/png", "image/jpeg"} or width < 1 or height < 1:
+        raise RuntimeError("The local image preparation install check did not complete.")
+    checks.append("local image preparation and encoding")
+
+    return write_self_test_output(folder, checks, "install check")
 
 
 def run_self_test(folder: Path) -> int:
@@ -5144,9 +5256,8 @@ def run_self_test(folder: Path) -> int:
         raise RuntimeError("Provider warmup did not finish exactly once.")
     checks.append("deferred key-free provider warmup is nonblocking and one-shot")
 
-    if os.environ.get("FLEECE_LOCATION_BOOTSTRAP_REGRESSION_CHILD") != "1":
-        run_bootstrap_isolation_regression()
-        checks.append("isolated shortcut and bootstrap restart reject PYTHONPATH module injection")
+    run_isolated_runtime_probe()
+    checks.append("isolated windowless runtime uses private packages and rejects PYTHONPATH injection")
 
     if not provider_self_test():
         raise RuntimeError("The provider catalog self-test did not complete.")
@@ -7020,25 +7131,7 @@ def run_self_test(folder: Path) -> int:
             "filename-only image display, change-aware protected settings, reused scroll animations, smooth accessible scrolling, exact dropdown sizing, optional report saving, immediate Activity result and map pin, informed model privacy, and guarded save recovery"
         )
 
-    output = {
-        "app": APP_NAME,
-        "version": APP_VERSION,
-        "passed": True,
-        "network_requests": 0,
-        "real_desktop_captures": 0,
-        "providers": len(direct_providers()),
-        "model_entries": len(MODELS),
-        "checks": checks,
-    }
-    checks_path = folder / "checks.json"
-    checks_path.write_text(
-        json.dumps(output, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    if not checks_path.is_file() or checks_path.stat().st_size < 100:
-        raise RuntimeError("The self-test result could not be saved.")
-    print(f"{APP_NAME} self-test passed ({len(checks)} checks).")
-    return 0
+    return write_self_test_output(folder, checks, "self-test")
 
 
 def screenshot_app(output_path) -> int:
@@ -7093,8 +7186,10 @@ def main() -> int:
     if os.name != "nt":
         show_native_error("AI Location Finder supports 64-bit Windows only.")
         return 1
-    diagnostic_mode = "--self-test" in sys.argv or "--screenshot" in sys.argv
-    if "--self-test" in sys.argv:
+    diagnostic_mode = any(
+        option in sys.argv for option in ("--install-check", "--self-test", "--screenshot")
+    )
+    if "--install-check" in sys.argv or "--self-test" in sys.argv:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         system_fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
         if system_fonts.is_dir():
@@ -7129,6 +7224,11 @@ def main() -> int:
     app.setOrganizationName("Fleece")
     sys.excepthook = sys.__excepthook__ if diagnostic_mode else handle_unhandled_exception
 
+    if "--install-check" in sys.argv:
+        index = sys.argv.index("--install-check")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit("--install-check needs an output folder")
+        return run_install_check(Path(sys.argv[index + 1]))
     if "--self-test" in sys.argv:
         index = sys.argv.index("--self-test")
         if index + 1 >= len(sys.argv):
