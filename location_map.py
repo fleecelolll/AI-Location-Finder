@@ -1329,6 +1329,7 @@ class WorldMapView(QWidget):
             QNetworkRequest.RedirectPolicyAttribute,
             _TILE_REDIRECT_POLICY,
         )
+        request.setTransferTimeout(NETWORK_TIMEOUT_MS)
         reply = manager.get(request)
         self._pending[key] = reply
         reply_id = _qt_object_token(reply)
@@ -1724,7 +1725,10 @@ def run_self_test() -> list[str]:
         raise RuntimeError("The required OpenStreetMap tile endpoint changed.")
     if "World_Boundaries_and_Places/MapServer/tile/12/1341/2110" not in satellite_url:
         raise RuntimeError("The satellite label overlay URL is malformed.")
-    if _TILE_REDIRECT_POLICY != QNetworkRequest.ManualRedirectPolicy:
+    if (
+        _TILE_REDIRECT_POLICY != QNetworkRequest.ManualRedirectPolicy
+        or NETWORK_TIMEOUT_MS != 12_000
+    ):
         raise RuntimeError("Tile redirects could escape the strict provider allowlist.")
     checks.append("strict HTTPS tile provider allowlist and URL ordering")
 
@@ -1763,6 +1767,33 @@ def run_self_test() -> list[str]:
         raise RuntimeError("Offline test mode created a network request path.")
     if not math.isclose(view.zoom_factor, view._minimum_zoom_for_viewport()):
         raise RuntimeError("The map did not start at the world overview.")
+
+    class RequestCaptured(Exception):
+        pass
+
+    captured_requests = []
+
+    class RequestManagerProbe:
+        @staticmethod
+        def get(request):
+            captured_requests.append(request)
+            raise RequestCaptured
+
+    view._network_manager = RequestManagerProbe()
+    try:
+        view._request_tile((LAYER_STREET, 3, 2, 2, "base"))
+    except RequestCaptured:
+        pass
+    finally:
+        view._network_manager = None
+    if (
+        len(captured_requests) != 1
+        or captured_requests[0].transferTimeout() != NETWORK_TIMEOUT_MS
+        or captured_requests[0].attribute(QNetworkRequest.RedirectPolicyAttribute)
+        != _TILE_REDIRECT_POLICY
+        or view.network_request_count != 0
+    ):
+        raise RuntimeError("The tile request lost its timeout or redirect boundary.")
     if view.active_layer != LAYER_STREET or not view._street_button.isChecked():
         raise RuntimeError("The map did not default to the Street layer.")
     checks.append("explicit zero-network offline and screenshot-test mode")
@@ -2104,6 +2135,28 @@ def run_self_test() -> list[str]:
         raise RuntimeError("A visible failed tile did not retry after its cooldown.")
     checks.append("automatic visible-tile retry after transient failure")
 
+    for index in range(240):
+        view.set_layer(LAYER_STREET if index % 2 == 0 else LAYER_SATELLITE)
+        target_zoom = MIN_ZOOM - 100.0 if index % 3 == 0 else MAX_ZOOM + 100.0
+        view._set_zoom(
+            target_zoom,
+            QPointF(float((index * 37) % 721), float((index * 53) % 421)),
+        )
+        extreme = 10_000_000.0 if index % 2 == 0 else -10_000_000.0
+        view._set_center_from_world(QPointF(extreme, -extreme))
+        view._prepare_view_change()
+    app.processEvents()
+    if (
+        not math.isfinite(view.zoom_factor)
+        or not view._minimum_zoom_for_viewport() <= view.zoom_factor <= MAX_ZOOM
+        or not -180.0 <= view._center_longitude <= 180.0
+        or not -WEB_MERCATOR_MAX_LATITUDE <= view._center_latitude <= WEB_MERCATOR_MAX_LATITUDE
+        or view._pending
+        or view.network_request_count != 0
+    ):
+        raise RuntimeError("Rapid zoom, pan, and layer changes escaped safe map bounds.")
+    checks.append("rapid zoom, pan, and layer-switch soak without network or stale replies")
+
     view.show_satellite()
     app.processEvents()
     if view.active_layer != LAYER_SATELLITE or not view._satellite_button.isChecked():
@@ -2133,9 +2186,37 @@ def run_self_test() -> list[str]:
         raise RuntimeError("Map attribution was not permanently visible.")
     checks.append("permanent visible attribution and privacy summary")
 
+    class CloseReplyProbe:
+        def __init__(self):
+            self.running = True
+            self.aborted = False
+            self.deleted_later = False
+
+        def isRunning(self):
+            return self.running
+
+        def abort(self):
+            self.aborted = True
+            self.running = False
+
+        def deleteLater(self):
+            self.deleted_later = True
+
+    close_key = (view.active_layer, 3, 2, 2, "base")
+    close_reply = CloseReplyProbe()
+    view._pending[close_key] = close_reply
+    view._pending_by_reply_id[id(close_reply)] = close_key
     view.close()
     fallback_view.close()
     app.processEvents()
+    if (
+        not close_reply.aborted
+        or not close_reply.deleted_later
+        or view._pending
+        or view._pending_by_reply_id
+    ):
+        raise RuntimeError("Closing the map left an active tile reply behind.")
+    checks.append("close aborts and retires every remaining tile reply")
     if owns_application:
         app.quit()
     return checks

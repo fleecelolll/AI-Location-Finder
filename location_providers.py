@@ -8,7 +8,9 @@ import json
 import re
 import secrets
 import threading
+import time
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Mapping, Optional
 
 import httpx
@@ -295,16 +297,16 @@ def _model(
 
 
 _SONNET_PRICE_NOTE = (
-    "Introductory price through 2026-08-31; Anthropic lists a later standard "
-    "price of $3 input / $15 output per million tokens."
+    "Anthropic made the $2 input / $10 output rate the standard price; the "
+    "previously scheduled 2026-09-01 increase will not occur."
 )
 _GEMINI_PRO_PRICE_NOTE = (
     "Price shown is for prompts up to 200k tokens; Google's long-context rate "
     "is higher."
 )
 _GEMINI_FLASH_PRICE_NOTE = (
-    "Promotional standard API price through 2026-12-31; Google lists a later "
-    "price of $1.50 input / $7.50 output per million tokens."
+    "Google's promotional $0.75 input / $3.75 output price ends 2026-12-31. "
+    "Cost estimates automatically use the later $1.50 input / $7.50 output price."
 )
 _ANTHROPIC_FABLE_PRIVACY_WARNING = PrivacyWarning(
     title="Claude Fable 5 privacy warning",
@@ -369,7 +371,7 @@ MODELS = (
     _model(
         "google", "gemini-3.7-flash", "Google", "Gemini 3.7 Flash",
         "Balanced", "high", "fast", "Google's latest stable multimodal Flash model.",
-        0.75, 3.75, 1_048_576, _EFFORT_HIGH_CEILING, reasoning_mandatory=True,
+        1.5, 7.5, 1_048_576, _EFFORT_HIGH_CEILING, reasoning_mandatory=True,
         pricing_note=_GEMINI_FLASH_PRICE_NOTE,
     ),
     _model(
@@ -401,6 +403,7 @@ OFFICIAL_SOURCES = {
         "https://platform.claude.com/docs/en/test-and-evaluate/"
         "strengthen-guardrails/reduce-latency"
     ),
+    "anthropic_pricing": "https://platform.claude.com/docs/en/about-claude/pricing",
     "anthropic_vision": "https://platform.claude.com/docs/en/build-with-claude/vision",
     "anthropic_prompt_cache": (
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
@@ -442,7 +445,12 @@ OFFICIAL_SOURCES = {
 
 _PROVIDER_INDEX = {provider.id: provider for provider in PROVIDERS}
 _MODEL_INDEX = {(model.provider_id, model.id): model for model in MODELS}
-_MAX_RESPONSE_TOKENS = 40_000
+_RESPONSE_TOKENS_BY_EFFORT = {
+    "Low": 8_192,
+    "Medium": 12_288,
+    "High": 20_480,
+    "Ultra": 32_768,
+}
 _HAIKU_RESPONSE_TOKENS = {
     "Low": 4_096,
     "Medium": 8_192,
@@ -511,7 +519,21 @@ def _response_token_limit(model: ModelSpec, effort_label: str) -> int:
     label = _normalize_effort_label(effort_label)
     if model.provider_id == "anthropic" and model.id == _ANTHROPIC_HAIKU_ID:
         return _HAIKU_RESPONSE_TOKENS[label]
-    return _MAX_RESPONSE_TOKENS
+    return _RESPONSE_TOKENS_BY_EFFORT[label]
+
+
+def effective_model_prices(
+    model: ModelSpec,
+    pricing_date: Optional[date] = None,
+) -> tuple[float, float]:
+
+    current_date = pricing_date or date.today()
+    if not isinstance(current_date, date):
+        raise TypeError("pricing_date must be a date.")
+    key = (model.provider_id, model.id)
+    if key == ("google", "gemini-3.7-flash") and current_date <= date(2026, 12, 31):
+        return 0.75, 3.75
+    return model.input_cost_per_million, model.output_cost_per_million
 
 
 def estimate_cost(
@@ -521,6 +543,7 @@ def estimate_cost(
     estimated_output_tokens: int = 1500,
     *,
     effort_label: Optional[str] = None,
+    pricing_date: Optional[date] = None,
 ) -> float:
 
     if isinstance(passes, bool) or not isinstance(passes, int) or passes < 1:
@@ -536,9 +559,10 @@ def estimate_cost(
             "High": 1.6,
             "Ultra": 2.4,
         }[normalized_effort]
+    input_price, output_price = effective_model_prices(model, pricing_date)
     per_pass = (
-        estimated_input_tokens * model.input_cost_per_million
-        + estimated_output_tokens * effort_multiplier * model.output_cost_per_million
+        estimated_input_tokens * input_price
+        + estimated_output_tokens * effort_multiplier * output_price
     ) / 1_000_000
     return per_pass * passes
 
@@ -822,7 +846,7 @@ def _build_openai_payload(
     payload: dict[str, Any] = {
         "model": model.id,
         "store": False,
-        "max_output_tokens": _MAX_RESPONSE_TOKENS,
+        "max_output_tokens": _response_token_limit(model, effort_label),
         "reasoning": {"effort": str(effort), "context": "current_turn"},
         "input": [
             {
@@ -934,7 +958,7 @@ def _build_xai_payload(
     payload: dict[str, Any] = {
         "model": model.id,
         "store": False,
-        "max_output_tokens": _MAX_RESPONSE_TOKENS,
+        "max_output_tokens": _response_token_limit(model, effort_label),
         "reasoning": {"effort": str(effort)},
         "input": inputs,
         "text": {"format": _structured_format(schema)},
@@ -1000,6 +1024,40 @@ def _close_http_client() -> None:
 atexit.register(_close_http_client)
 
 
+def _interrupt_http_client(client: httpx.Client) -> None:
+
+    global _HTTP_CLIENT
+    with _HTTP_CLIENT_LOCK:
+        if _HTTP_CLIENT is client:
+            _HTTP_CLIENT = None
+    try:
+        if not client.is_closed:
+            client.close()
+    except (OSError, RuntimeError, httpx.HTTPError):
+        pass
+
+
+def _watch_request_lifecycle(
+    client: httpx.Client,
+    cancel_event: Any,
+    request_finished: threading.Event,
+    request_timed_out: threading.Event,
+    timeout_seconds: float,
+) -> None:
+
+    deadline = time.monotonic() + timeout_seconds
+    while not request_finished.is_set():
+        if cancel_event is not None and bool(cancel_event.is_set()):
+            _interrupt_http_client(client)
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            request_timed_out.set()
+            _interrupt_http_client(client)
+            return
+        request_finished.wait(min(0.05, remaining))
+
+
 def _post_json(
     provider: ProviderSpec,
     api_key: str,
@@ -1014,30 +1072,80 @@ def _post_json(
         raise ValueError("Timeout must be a number of seconds.") from error
     if timeout_value <= 0:
         raise ValueError("Timeout must be greater than zero.")
-    timeout = httpx.Timeout(timeout_value, connect=min(30.0, timeout_value))
+    timeout = httpx.Timeout(
+        timeout_value,
+        connect=min(20.0, timeout_value),
+        pool=min(10.0, timeout_value),
+    )
+    client = _get_http_client()
+    request_finished = threading.Event()
+    request_timed_out = threading.Event()
+    lifecycle_watcher = threading.Thread(
+        target=_watch_request_lifecycle,
+        args=(
+            client,
+            cancel_event,
+            request_finished,
+            request_timed_out,
+            timeout_value,
+        ),
+        name="AILocationRequestLifecycle",
+        daemon=True,
+    )
     try:
-        response = _get_http_client().post(
+        lifecycle_watcher.start()
+    except (RuntimeError, OSError) as error:
+        raise ProviderRequestError(
+            "The request safety monitor could not start. Try again.",
+            "connection",
+        ) from error
+    try:
+        response = client.post(
             provider.request_url,
             headers=_request_headers(provider, api_key),
             json=payload,
             timeout=timeout,
         )
     except httpx.TimeoutException:
+        if cancel_event is not None and bool(cancel_event.is_set()):
+            raise ProviderRequestError("Analysis was cancelled.", "cancelled") from None
         raise ProviderRequestError(
             f"{provider.name} took too long to respond. Try again or lower the effort.",
             "timeout",
         ) from None
     except (httpx.ConnectError, httpx.NetworkError):
+        if cancel_event is not None and bool(cancel_event.is_set()):
+            raise ProviderRequestError("Analysis was cancelled.", "cancelled") from None
+        if request_timed_out.is_set():
+            raise ProviderRequestError(
+                f"{provider.name} took too long to respond. Try again or lower the effort.",
+                "timeout",
+            ) from None
         raise ProviderRequestError(
             f"{provider.name} could not be reached. Check your internet connection.",
             "connection",
         ) from None
-    except httpx.HTTPError:
+    except (OSError, RuntimeError, httpx.HTTPError):
+        if cancel_event is not None and bool(cancel_event.is_set()):
+            raise ProviderRequestError("Analysis was cancelled.", "cancelled") from None
+        if request_timed_out.is_set():
+            raise ProviderRequestError(
+                f"{provider.name} took too long to respond. Try again or lower the effort.",
+                "timeout",
+            ) from None
         raise ProviderRequestError(
             f"The request to {provider.name} could not be completed.",
             "connection",
         ) from None
+    finally:
+        request_finished.set()
+        lifecycle_watcher.join(timeout=0.25)
     _check_cancel(cancel_event)
+    if request_timed_out.is_set():
+        raise ProviderRequestError(
+            f"{provider.name} took too long to respond. Try again or lower the effort.",
+            "timeout",
+        )
     return response
 
 
@@ -1761,12 +1869,12 @@ def self_test() -> bool:
     ] != [4_096, 8_192, 16_384, 24_576]:
         raise RuntimeError("Haiku effort-aware response ceilings changed.")
     if any(
-        _response_token_limit(token_model, label) != _MAX_RESPONSE_TOKENS
+        [_response_token_limit(token_model, label) for label in EFFORT_LABELS]
+        != [8_192, 12_288, 20_480, 32_768]
         for token_model in MODELS
         if token_model != haiku
-        for label in EFFORT_LABELS
     ):
-        raise RuntimeError("An adaptive reasoner lost its full response ceiling.")
+        raise RuntimeError("An adaptive reasoner lost its effort-aware response ceiling.")
 
     expected_prices = {
         ("anthropic", "claude-fable-5"): (10.0, 50.0),
@@ -1777,7 +1885,7 @@ def self_test() -> bool:
         ("openai", "gpt-5.6-terra"): (2.0, 12.0),
         ("openai", "gpt-5.6-luna"): (0.2, 1.2),
         ("google", "gemini-3.1-pro-preview"): (2.0, 12.0),
-        ("google", "gemini-3.7-flash"): (0.75, 3.75),
+        ("google", "gemini-3.7-flash"): (1.5, 7.5),
         ("google", "gemini-3.5-flash-lite"): (0.3, 2.5),
         ("xai", "grok-4.6"): (2.0, 6.0),
         ("xai", "grok-4.3"): (1.25, 2.5),
@@ -1799,6 +1907,27 @@ def self_test() -> bool:
         )
     ):
         raise RuntimeError("A time- or context-dependent price lost its note.")
+    sonnet = model_by_id("anthropic", "claude-sonnet-5")
+    gemini_flash = model_by_id("google", "gemini-3.7-flash")
+    if (
+        effective_model_prices(sonnet, date(2026, 8, 31)) != (2.0, 10.0)
+        or effective_model_prices(sonnet, date(2026, 9, 1)) != (2.0, 10.0)
+        or effective_model_prices(gemini_flash, date(2026, 12, 31)) != (0.75, 3.75)
+        or effective_model_prices(gemini_flash, date(2027, 1, 1)) != (1.5, 7.5)
+    ):
+        raise RuntimeError("A documented price boundary was handled incorrectly.")
+    promo_cost = estimate_cost(
+        gemini_flash,
+        1,
+        pricing_date=date(2026, 12, 31),
+    )
+    standard_cost = estimate_cost(
+        gemini_flash,
+        1,
+        pricing_date=date(2027, 1, 1),
+    )
+    if not standard_cost > promo_cost:
+        raise RuntimeError("Date-aware cost estimation ignored a price transition.")
 
     warned_models = {
         (model.provider_id, model.id)
@@ -2893,6 +3022,68 @@ def self_test() -> bool:
             "Authorization"
         ) != f"Bearer {test_key}":
             raise RuntimeError("Bearer request key isolation failed.")
+
+    class _BlockingClientProbe:
+        def __init__(self):
+            self.started = threading.Event()
+            self.closed = threading.Event()
+            self.is_closed = False
+
+        def close(self):
+            self.is_closed = True
+            self.closed.set()
+
+        def post(self, *_args: Any, **_kwargs: Any):
+            self.started.set()
+            if not self.closed.wait(2.0):
+                raise AssertionError("The request lifecycle watcher did not interrupt I/O.")
+            raise httpx.ReadError("interrupted by lifecycle watcher")
+
+    def run_blocked_request(cancel_event, timeout_seconds):
+        errors = []
+
+        def request_call():
+            try:
+                _post_json(
+                    provider_by_id("openai"),
+                    "offline-cancellation-key",
+                    {},
+                    timeout_seconds,
+                    cancel_event,
+                )
+            except ProviderRequestError as error:
+                errors.append(error)
+
+        probe = _BlockingClientProbe()
+        globals()["_HTTP_CLIENT"] = probe
+        caller = threading.Thread(target=request_call, name="OfflineProviderCancelProbe")
+        caller.start()
+        if not probe.started.wait(0.5):
+            raise RuntimeError("The offline blocking request did not start.")
+        return probe, caller, errors
+
+    cancellation = threading.Event()
+    cancel_probe, cancel_caller, cancel_errors = run_blocked_request(cancellation, 1.0)
+    cancellation.set()
+    cancel_caller.join(1.0)
+    if (
+        cancel_caller.is_alive()
+        or not cancel_probe.is_closed
+        or len(cancel_errors) != 1
+        or cancel_errors[0].category != "cancelled"
+    ):
+        raise RuntimeError("An in-flight provider request was not cancelled promptly.")
+
+    timeout_probe, timeout_caller, timeout_errors = run_blocked_request(None, 0.05)
+    timeout_caller.join(1.0)
+    if (
+        timeout_caller.is_alive()
+        or not timeout_probe.is_closed
+        or len(timeout_errors) != 1
+        or timeout_errors[0].category != "timeout"
+    ):
+        raise RuntimeError("A provider request exceeded its wall-clock bound.")
+    _close_http_client()
 
     class _Cancelled:
         @staticmethod

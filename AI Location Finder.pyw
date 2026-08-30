@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -167,6 +167,7 @@ try:
         QDragEnterEvent,
         QDropEvent,
         QImage,
+        QImageReader,
         QMouseEvent,
         QPainter,
         QPen,
@@ -659,6 +660,7 @@ IMAGE_EXTENSIONS = {
     ".tiff",
 }
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_INPUT_IMAGE_PIXELS = 64_000_000
 MAX_IMAGE_LONG_EDGE = 2576
 HAIKU_MAX_IMAGE_LONG_EDGE = 1568
 HAIKU_MAX_VISUAL_TOKENS = 1568
@@ -670,7 +672,13 @@ UPLOAD_QUALITY_BY_EFFORT = {
     "Ultra": 99,
 }
 PNG_SIZE_LIMIT = 5 * 1024 * 1024
-REQUEST_TIMEOUT_SECONDS = 300.0
+REQUEST_TIMEOUT_SECONDS = 180.0
+MAX_IMAGE_LONG_EDGE_BY_EFFORT = {
+    "Low": 2048,
+    "Medium": 2304,
+    "High": 2496,
+    "Ultra": MAX_IMAGE_LONG_EDGE,
+}
 DIRECT_PROVIDER_ORDER = ("xai", "google", "anthropic", "openai")
 MAP_PREFERENCE_SCHEMA_VERSION = 2
 
@@ -1623,7 +1631,30 @@ def write_report(
     return output
 
 
-def load_image_file(path: Path) -> QImage:
+def validated_input_image_dimensions(width: int, height: int) -> tuple[int, int]:
+
+    if (
+        isinstance(width, bool)
+        or isinstance(height, bool)
+        or not isinstance(width, int)
+        or not isinstance(height, int)
+        or width < 1
+        or height < 1
+        or width > MAX_INPUT_IMAGE_PIXELS // height
+    ):
+        raise AnalysisError(
+            "The selected image has too many pixels to decode safely. "
+            "Choose an image with at most 64 million pixels."
+        )
+    return width, height
+
+
+def load_image_file(
+    path: Path,
+    *,
+    max_long_edge: int = MAX_IMAGE_LONG_EDGE,
+    max_visual_tokens: Optional[int] = None,
+) -> QImage:
     path = path.expanduser().resolve()
     if not path.is_file():
         raise AnalysisError("The selected image no longer exists.")
@@ -1631,7 +1662,27 @@ def load_image_file(path: Path) -> QImage:
         raise AnalysisError("Choose a PNG, JPG, WEBP, BMP, GIF, or TIFF image.")
     if path.stat().st_size > MAX_IMAGE_BYTES:
         raise AnalysisError("The image is larger than the 20 MB limit.")
-    image = QImage(str(path))
+    reader = QImageReader(str(path))
+    reader.setAutoTransform(True)
+    reader.setDecideFormatFromContent(True)
+    if not reader.canRead():
+        raise AnalysisError("The selected file is not a readable image.")
+    source_size = reader.size()
+    if not source_size.isValid():
+        raise AnalysisError("The selected image dimensions could not be validated safely.")
+    source_width, source_height = validated_input_image_dimensions(
+        source_size.width(),
+        source_size.height(),
+    )
+    scaled_width, scaled_height = scaled_upload_dimensions(
+        source_width,
+        source_height,
+        max_long_edge=max_long_edge,
+        max_visual_tokens=max_visual_tokens,
+    )
+    if (scaled_width, scaled_height) != (source_width, source_height):
+        reader.setScaledSize(QSize(scaled_width, scaled_height))
+    image = reader.read()
     if image.isNull():
         raise AnalysisError("The selected file is not a readable image.")
     return image
@@ -1671,7 +1722,9 @@ def image_upload_profile(model, effort_label: str, passes: int):
         "media_type": "image/jpeg" if model.provider_id == "xai" else "image/webp",
         "quality": quality,
         "max_long_edge": (
-            HAIKU_MAX_IMAGE_LONG_EDGE if is_haiku else MAX_IMAGE_LONG_EDGE
+            HAIKU_MAX_IMAGE_LONG_EDGE
+            if is_haiku
+            else MAX_IMAGE_LONG_EDGE_BY_EFFORT[normalized_effort]
         ),
         "max_visual_tokens": (
             HAIKU_MAX_VISUAL_TOKENS if is_haiku else None
@@ -1679,20 +1732,22 @@ def image_upload_profile(model, effort_label: str, passes: int):
     }
 
 
-def scale_for_upload(
-    image: QImage,
+def scaled_upload_dimensions(
+    width: int,
+    height: int,
     max_long_edge: int = MAX_IMAGE_LONG_EDGE,
     max_visual_tokens: Optional[int] = None,
-) -> QImage:
-    width = image.width()
-    height = image.height()
+) -> tuple[int, int]:
+
+    if width < 1 or height < 1 or max_long_edge < 1:
+        raise AnalysisError("The image dimensions are not usable.")
     long_edge = max(width, height)
     within_token_limit = (
         max_visual_tokens is None
         or image_visual_tokens(width, height) <= max_visual_tokens
     )
     if long_edge <= max_long_edge and within_token_limit:
-        return image
+        return width, height
 
     ratio = min(1.0, max_long_edge / long_edge)
     if max_visual_tokens is not None:
@@ -1715,6 +1770,23 @@ def scale_for_upload(
             scaled_height -= 1
             scaled_width = max(1, round(scaled_height * width / height))
 
+    return scaled_width, scaled_height
+
+
+def scale_for_upload(
+    image: QImage,
+    max_long_edge: int = MAX_IMAGE_LONG_EDGE,
+    max_visual_tokens: Optional[int] = None,
+) -> QImage:
+
+    scaled_width, scaled_height = scaled_upload_dimensions(
+        image.width(),
+        image.height(),
+        max_long_edge=max_long_edge,
+        max_visual_tokens=max_visual_tokens,
+    )
+    if (scaled_width, scaled_height) == (image.width(), image.height()):
+        return image
     return image.scaled(
         scaled_width,
         scaled_height,
@@ -2957,6 +3029,7 @@ class LocationFinder(QMainWindow):
         self._last_report_context = None
         self._report_needs_save = False
         self._restoring = True
+        self._settings_error_reported = False
         self._current_provider_id = ""
         self._pending_keys = {}
         self._providers = direct_providers()
@@ -3809,7 +3882,7 @@ class LocationFinder(QMainWindow):
 
     def save_preferences(self):
         if self._restoring:
-            return
+            return True
         model = self.selected_model()
         plain_preferences = {
             "source": self.source_dropdown.currentText(),
@@ -3837,16 +3910,30 @@ class LocationFinder(QMainWindow):
 
         guidance = self.extra_guidance_input.text().strip()[:1200]
         guidance_synced = False
+        save_error = False
         if guidance != self._saved_extra_guidance:
             try:
                 save_extra_guidance(self.settings, guidance)
             except OSError:
-                pass
+                save_error = True
             else:
                 self._saved_extra_guidance = guidance
                 guidance_synced = True
         if settings_dirty and not guidance_synced:
             self.settings.sync()
+            if self.settings.status() != QSettings.Status.NoError:
+                save_error = True
+        if save_error:
+            self.status_label.setText("Settings could not be saved")
+            if not self._settings_error_reported:
+                self.append_log(
+                    "Local preferences could not be saved. Check that the app folder "
+                    "is writable, then run Installer.bat again if the problem continues."
+                )
+            self._settings_error_reported = True
+            return False
+        self._settings_error_reported = False
+        return True
 
     def selected_model(self):
         selected = self._model_by_label.get(self.model_dropdown.currentText())
@@ -4420,10 +4507,8 @@ class LocationFinder(QMainWindow):
             self.status_label.setText("Unsaved report kept")
             return
         self.source_file = path
-        self.output_folder = path.parent
         self.source_dropdown.select("Image file")
         self._show_selected_image_name()
-        self.output_path_label.set_full_text(str(self.output_folder))
         self.output_file = None
         self.last_result = None
         self._last_report_context = None
@@ -4598,10 +4683,15 @@ class LocationFinder(QMainWindow):
             QApplication.processEvents()
             QThread.msleep(400)
         try:
+            upload_profile = image_upload_profile(model, effort, passes)
             image = (
                 capture_screen(capture_target.id)
                 if from_screen
-                else load_image_file(self.source_file)
+                else load_image_file(
+                    self.source_file,
+                    max_long_edge=upload_profile["max_long_edge"],
+                    max_visual_tokens=upload_profile["max_visual_tokens"],
+                )
             )
             image_data, media_type, width, height = encode_image(
                 image,
@@ -5279,6 +5369,42 @@ def run_self_test(folder: Path) -> int:
         "primary-monitor default, explicit all-monitor choice, and cursor-free capture contract"
     )
 
+    if validated_input_image_dimensions(8000, 8000) != (8000, 8000):
+        raise RuntimeError("The safe image pixel boundary was rejected.")
+    for unsafe_dimensions in (
+        (0, 1),
+        (1, 0),
+        (MAX_INPUT_IMAGE_PIXELS + 1, 1),
+        (True, 1),
+    ):
+        try:
+            validated_input_image_dimensions(*unsafe_dimensions)
+        except AnalysisError:
+            pass
+        else:
+            raise RuntimeError("An unsafe image dimension passed validation.")
+
+    scaled_decode_fixture = folder / "scaled-decode-fixture.png"
+    scaled_decode_source = QImage(2200, 8, QImage.Format_RGB32)
+    scaled_decode_source.fill(QColor("#48627a"))
+    if not scaled_decode_source.save(str(scaled_decode_fixture), "PNG"):
+        raise RuntimeError("The scaled-decode fixture could not be created.")
+    try:
+        scaled_decode_result = load_image_file(
+            scaled_decode_fixture,
+            max_long_edge=1024,
+        )
+    finally:
+        try:
+            scaled_decode_fixture.unlink(missing_ok=True)
+        except OSError:
+            pass
+    if (
+        scaled_decode_result.isNull()
+        or max(scaled_decode_result.width(), scaled_decode_result.height()) != 1024
+    ):
+        raise RuntimeError("File image scaling did not happen during bounded decode.")
+
     sample = QImage(4000, 1200, QImage.Format_RGB32)
     sample.fill(QColor("#101010"))
     prepared = scale_for_upload(sample)
@@ -5351,6 +5477,14 @@ def run_self_test(folder: Path) -> int:
                     or profile["max_visual_tokens"] != HAIKU_MAX_VISUAL_TOKENS
                 ):
                     raise RuntimeError("A Haiku setting lost its upload limits.")
+                if not is_haiku and (
+                    profile["max_long_edge"]
+                    != MAX_IMAGE_LONG_EDGE_BY_EFFORT[effort_label]
+                    or profile["max_visual_tokens"] is not None
+                ):
+                    raise RuntimeError(
+                        "A non-Haiku setting lost its effort-aware image limit."
+                    )
 
     deep_data, deep_media, deep_width, deep_height = encode_image(
         haiku_sample,
@@ -5488,7 +5622,8 @@ def run_self_test(folder: Path) -> int:
                     "An all-setting image encode lost privacy, fidelity, or compatibility."
                 )
     checks.append(
-        "all-setting metadata-free encoding with bounded Haiku images and quality floors"
+        "safe header validation, scaled file decode, and all-setting metadata-free "
+        "encoding with effort-aware image limits and quality floors"
     )
 
     prompt_checks = run_prompt_self_tests(MODELS)
@@ -6313,6 +6448,10 @@ def run_self_test(folder: Path) -> int:
         selected_image.fill(QColor("#49657a"))
         if not selected_image.save(str(selected_image_path), "PNG"):
             raise RuntimeError("Could not create the selected-image UI fixture.")
+        configured_report_folder = temporary_path / "chosen-report-folder"
+        window.output_folder = configured_report_folder
+        window.output_path_label.set_full_text(str(configured_report_folder))
+        window.save_preferences()
         window.set_source_file(selected_image_path)
         if (
             window.source_file != selected_image_path.resolve()
@@ -6320,8 +6459,13 @@ def run_self_test(folder: Path) -> int:
             or window.file_path_label.accessibleName() != selected_image_path.name
             or window.file_path_label.toolTip() != str(selected_image_path.resolve())
             or str(selected_image_folder) in window.file_path_label.full_text()
+            or window.output_folder != configured_report_folder
+            or Path(str(window.settings.value("output_folder", "")))
+            != configured_report_folder
         ):
-            raise RuntimeError("A selected image exposed its full path in the visible field.")
+            raise RuntimeError(
+                "A selected image exposed or replaced the configured report folder."
+            )
         window.source_dropdown.select("Screen capture")
         if "cursor excluded" not in window.file_path_label.full_text():
             raise RuntimeError("Screen-capture input lost its clear monitor description.")
@@ -6352,6 +6496,39 @@ def run_self_test(folder: Path) -> int:
                 raise RuntimeError("Changed guidance was not encrypted exactly once.")
         finally:
             globals()["save_extra_guidance"] = original_guidance_save
+
+        class FailingSettingsProbe:
+            def __init__(self):
+                self.values = {}
+
+            def value(self, key, default=None):
+                return self.values.get(key, default)
+
+            def setValue(self, key, value):
+                self.values[key] = value
+
+            @staticmethod
+            def sync():
+                return None
+
+            @staticmethod
+            def status():
+                return QSettings.Status.AccessError
+
+        real_settings = window.settings
+        window.settings = FailingSettingsProbe()
+        window._settings_error_reported = False
+        try:
+            if window.save_preferences():
+                raise RuntimeError("A settings write failure was reported as successful.")
+            if (
+                window.status_label.text() != "Settings could not be saved"
+                or "Local preferences could not be saved" not in window.log_box.toPlainText()
+            ):
+                raise RuntimeError("A settings write failure was hidden from the user.")
+        finally:
+            window.settings = real_settings
+            window._settings_error_reported = False
 
         if tuple(provider.id for provider in window._providers) != DIRECT_PROVIDER_ORDER:
             raise RuntimeError("The UI did not show exactly the four direct AI services.")
@@ -7189,7 +7366,7 @@ def main() -> int:
     diagnostic_mode = any(
         option in sys.argv for option in ("--install-check", "--self-test", "--screenshot")
     )
-    if "--install-check" in sys.argv or "--self-test" in sys.argv:
+    if diagnostic_mode:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         system_fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
         if system_fonts.is_dir():

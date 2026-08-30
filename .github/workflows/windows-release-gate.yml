@@ -1,0 +1,57 @@
+name: Windows release gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-install-and-repair:
+    name: ${{ matrix.runner }} clean install and repair
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - windows-2022
+          - windows-2025
+          - windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      PYTHONNOUSERSITE: "1"
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Verify the shared launcher without changing associations
+        shell: cmd
+        run: Installer.bat --test-association
+
+      - name: Perform a clean private setup and app self-test
+        shell: cmd
+        run: Installer.bat --yes --no-pause --skip-association
+
+      - name: Verify the repair path against the installed runtime
+        shell: cmd
+        run: Installer.bat --yes --no-pause --skip-association
+
+      - name: Upload diagnostics if a gate fails
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: setup-diagnostics-${{ matrix.runner }}-${{ github.run_id }}
+          if-no-files-found: ignore
+          path: |
+            setup.log
+            .runtime/error.log
+            .runtime/logs/*.log
