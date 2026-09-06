@@ -14,7 +14,6 @@ import shiboken6
 from PySide6.QtCore import (
     QBuffer,
     QIODevice,
-    QPoint,
     QPointF,
     QRectF,
     QSize,
@@ -59,18 +58,9 @@ MAP_ASSET_SHA256 = "95eea18d4483e463a4d9d6c4a1b6198f926e790f4ad1844e727fb00ce422
 MAP_ASSET_WIDTH = 3600
 MAP_ASSET_HEIGHT = 1800
 MAP_SCENE_RECT = QRectF(0.0, 0.0, float(MAP_ASSET_WIDTH), float(MAP_ASSET_HEIGHT))
-MAP_SOURCE_URL = "https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2"
 MAP_TERMS_URL = "https://www.naturalearthdata.com/about/terms-of-use/"
 
-OSM_TILE_POLICY_URL = "https://operations.osmfoundation.org/policies/tiles/"
 OSM_COPYRIGHT_URL = "https://www.openstreetmap.org/copyright"
-OSM_FIX_MAP_URL = "https://www.openstreetmap.org/fixthemap"
-ESRI_IMAGERY_ITEM_URL = (
-    "https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9"
-)
-ESRI_CLASSIC_BASEMAP_DOCS_URL = (
-    "https://esri.github.io/esri-leaflet/api-reference/layers/basemap-layer.html"
-)
 
 LAYER_STREET = "street"
 LAYER_SATELLITE = "satellite"
@@ -790,9 +780,6 @@ class WorldMapView(QWidget):
             self._attribution_label,
         ):
             overlay.raise_()
-
-    def coordinate_to_scene(self, latitude: float, longitude: float) -> QPointF:
-        return coordinate_to_scene(latitude, longitude)
 
     def set_location(
         self,

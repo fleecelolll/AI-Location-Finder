@@ -11,7 +11,6 @@ from typing import Any, Mapping, Sequence
 
 REGULAR_MODE = "Regular photo or screenshot"
 GEOGUESSR_MODE = "GeoGuessr screenshot"
-PROMPT_MODES = (GEOGUESSR_MODE, REGULAR_MODE)
 EFFORT_LEVELS = ("Low", "Medium", "High", "Ultra")
 
 _PRE_COMPACTION_MATRIX_CHARS = 2_814_989

@@ -10,10 +10,6 @@ set "SETUP_CHILD=0"
 set "LOG_READY="
 set "DIAGNOSTIC_LOG=nul"
 set "PATHS_VALIDATED="
-set "FFMPEG_DIR="
-set "DENO_DIR="
-set "HERCULES_DIR="
-set "LUA_DIR="
 
 :ParseArguments
 if "%~1"=="" goto ArgumentsReady
@@ -80,8 +76,6 @@ set "RUNTIME_PYW=%PYTHON_DIR%\pythonw.exe"
 set "LOCAL_SITE=%PYTHON_DIR%\Lib\site-packages"
 set "PIP_WHEEL=%PYTHON_DIR%\pip.whl"
 set "VENV=%ROOT%.venv"
-set "VENV_PY=%VENV%\Scripts\python.exe"
-set "VENV_PYW=%VENV%\Scripts\pythonw.exe"
 set "POWERSHELL_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "CURL_EXE=%SystemRoot%\System32\curl.exe"
 set "ROBOCOPY_EXE=%SystemRoot%\System32\robocopy.exe"
@@ -90,7 +84,6 @@ set "PYSIDE_VERSION=6.11.2"
 set "PYSIDE_DISTRIBUTION=PySide6-Essentials"
 set "HTTPX_VERSION=0.28.1"
 set "ANYIO_VERSION=4.15.1"
-set "PIP_VERSION=26.2.1"
 set "PYPI_INDEX=https://pypi.org/simple"
 set "PIP_WHEEL_URL=https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl"
 set "PIP_WHEEL_SHA256=71138ADF1F4CA900CDB7D289C21B7494329F2332B6D85F0E1C42108C0384ED3E"
@@ -483,12 +476,12 @@ exit /b %ERRORLEVEL%
 exit /b %ERRORLEVEL%
 
 :ValidatePrivatePaths
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$volume=[IO.Path]::GetPathRoot($root).TrimEnd('\');if([string]::IsNullOrWhiteSpace($root)-or $root -ieq $volume){throw 'Unsafe project root.'};$rootItem=Get-Item -LiteralPath $root -Force;if(-not $rootItem.PSIsContainer-or($rootItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The project root must be a normal directory.'};$targets=@($env:RUNTIME,$env:VENV,$env:DOWNLOADS,$env:PYTHON_DIR,(Join-Path $env:PYTHON_DIR 'Lib'),$env:LOCAL_SITE,$env:SETUP_LOCK,($env:PYTHON_DIR+'.new'),($env:PYTHON_DIR+'.old'),($env:VENV+'.old'),(Join-Path $env:RUNTIME 'b'),(Join-Path $env:RUNTIME 'b.new'),(Join-Path $env:RUNTIME 'b.old'),(Join-Path $env:RUNTIME 'setup-check'));foreach($name in @('FFMPEG_DIR','DENO_DIR','HERCULES_DIR','LUA_DIR')){$value=[Environment]::GetEnvironmentVariable($name);if($value){$targets+=@($value,($value+'.new'),($value+'.old'),($value+'.extract'))}};$prefix=$root+'\';foreach($target in $targets){if([string]::IsNullOrWhiteSpace($target)){throw 'A private setup path is empty.'};$full=[IO.Path]::GetFullPath($target).TrimEnd('\');if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup path escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup directory is unsafe.'}}};foreach($file in @($env:LOG,$env:SETUP_MARKER,($env:SETUP_MARKER+'.new'),$env:SETUP_LOCK_OWNER,($env:SETUP_LOCK_OWNER+'.new'),$env:PIP_WHEEL)){if([string]::IsNullOrWhiteSpace($file)){continue};$full=[IO.Path]::GetFullPath($file);if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup file escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if($item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup file is unsafe.'}}};exit 0" >nul 2>nul
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$volume=[IO.Path]::GetPathRoot($root).TrimEnd('\');if([string]::IsNullOrWhiteSpace($root)-or $root -ieq $volume){throw 'Unsafe project root.'};$rootItem=Get-Item -LiteralPath $root -Force;if(-not $rootItem.PSIsContainer-or($rootItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The project root must be a normal directory.'};$targets=@($env:RUNTIME,$env:VENV,$env:DOWNLOADS,$env:PYTHON_DIR,(Join-Path $env:PYTHON_DIR 'Lib'),$env:LOCAL_SITE,$env:SETUP_LOCK,($env:PYTHON_DIR+'.new'),($env:PYTHON_DIR+'.old'),($env:VENV+'.old'),(Join-Path $env:RUNTIME 'b'),(Join-Path $env:RUNTIME 'b.new'),(Join-Path $env:RUNTIME 'b.old'),(Join-Path $env:RUNTIME 'setup-check'));$prefix=$root+'\';foreach($target in $targets){if([string]::IsNullOrWhiteSpace($target)){throw 'A private setup path is empty.'};$full=[IO.Path]::GetFullPath($target).TrimEnd('\');if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup path escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup directory is unsafe.'}}};foreach($file in @($env:LOG,$env:SETUP_MARKER,($env:SETUP_MARKER+'.new'),$env:SETUP_LOCK_OWNER,($env:SETUP_LOCK_OWNER+'.new'),$env:PIP_WHEEL)){if([string]::IsNullOrWhiteSpace($file)){continue};$full=[IO.Path]::GetFullPath($file);if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup file escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if($item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup file is unsafe.'}}};exit 0" >nul 2>nul
 exit /b %ERRORLEVEL%
 
 :WriteSetupMarker
-if /I not "%ENV_MODE%"=="venv" if /I not "%ENV_MODE%"=="embedded" exit /b 1
->"%SETUP_MARKER%.new" echo %ENV_MODE%
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
+>"%SETUP_MARKER%.new" echo embedded
 if errorlevel 1 exit /b 1
 move /y "%SETUP_MARKER%.new" "%SETUP_MARKER%" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
@@ -511,82 +504,6 @@ if not "%SETUP_LOCK_HELD%"=="1" exit /b 0
 exit /b %ERRORLEVEL%
 
 
-:FindBasePython
-set "BASE_PY="
-where py.exe >nul 2>nul
-if errorlevel 1 goto FindPathPython
-for %%V in (3.14 3.13 3.12 3.11 3.10) do call :TryPyTag %%V
-if defined BASE_PY exit /b 0
-
-:FindPathPython
-call :TryPythonCommand python.exe
-if defined BASE_PY exit /b 0
-call :TryPythonCommand python3.exe
-if defined BASE_PY exit /b 0
-for /f "delims=" %%P in ('where python.exe 2^>nul ^| findstr /V /I /C:"Microsoft\WindowsApps"') do call :TryPythonPath "%%P"
-if defined BASE_PY exit /b 0
-for /f "delims=" %%P in ('where python3.exe 2^>nul ^| findstr /V /I /C:"Microsoft\WindowsApps"') do call :TryPythonPath "%%P"
-if defined BASE_PY exit /b 0
-
-for %%P in (
-    "%LocalAppData%\Programs\Python\Python314\python.exe"
-    "%LocalAppData%\Programs\Python\Python313\python.exe"
-    "%LocalAppData%\Programs\Python\Python312\python.exe"
-    "%LocalAppData%\Programs\Python\Python311\python.exe"
-    "%LocalAppData%\Programs\Python\Python310\python.exe"
-    "%ProgramFiles%\Python314\python.exe"
-    "%ProgramFiles%\Python313\python.exe"
-    "%ProgramFiles%\Python312\python.exe"
-    "%ProgramFiles%\Python311\python.exe"
-    "%ProgramFiles%\Python310\python.exe"
-) do call :TryPythonPath "%%~fP"
-exit /b 0
-
-:TryPythonCommand
-if defined BASE_PY exit /b 0
-where %~1 >nul 2>nul
-if errorlevel 1 exit /b 1
-set "CANDIDATE_FILE=%RUNTIME%\python-candidate.txt"
-%~1 -I -c "import sys; print(sys.executable)" >"%CANDIDATE_FILE%" 2>>"%LOG%"
-if errorlevel 1 exit /b 1
-set "CANDIDATE="
-set /p "CANDIDATE="<"%CANDIDATE_FILE%"
-del /f /q "%CANDIDATE_FILE%" >nul 2>nul
-if not defined CANDIDATE exit /b 1
-call :TryPythonPath "%CANDIDATE%"
-exit /b %ERRORLEVEL%
-
-:TryPyTag
-if defined BASE_PY exit /b 0
-py -0p 2>nul | findstr /I /C:":%~1" >nul
-if errorlevel 1 exit /b 1
-set "CANDIDATE_FILE=%RUNTIME%\python-candidate.txt"
-py -%~1 -I -c "import sys; print(sys.executable)" >"%CANDIDATE_FILE%" 2>>"%LOG%"
-if errorlevel 1 exit /b 1
-set "CANDIDATE="
-set /p "CANDIDATE="<"%CANDIDATE_FILE%"
-del /f /q "%CANDIDATE_FILE%" >nul 2>nul
-if not defined CANDIDATE exit /b 1
-call :TryPythonPath "%CANDIDATE%"
-exit /b %ERRORLEVEL%
-
-:TryPythonPath
-if defined BASE_PY exit /b 0
-if "%~1"=="" exit /b 1
-if not exist "%~1" exit /b 1
-call :ValidatePython "%~1"
-if errorlevel 1 exit /b 1
-set "BASE_PY=%~1"
-set "LOG_MESSAGE=Found compatible base CPython: %~1"
-call :LogCurrent
-exit /b 0
-
-:ValidatePython
-if "%~1"=="" exit /b 1
-if not exist "%~1" exit /b 1
-"%~1" -I -c "import sys, struct, venv, ensurepip; ok = sys.implementation.name == 'cpython' and (3, 10) <= sys.version_info[:2] < (3, 15) and struct.calcsize('P') == 8; raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-
 :ValidateEmbeddedPython
 call :ValidateEmbeddedPythonAt "%PYTHON_DIR%"
 exit /b %ERRORLEVEL%
@@ -603,16 +520,6 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 "%~1\python.exe" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%~1\pip.whl" --version >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
-
-:DescribePython
-"%~1" -I -c "import sys, platform; print('Selected CPython ' + platform.python_version() + ' at ' + sys.executable)" >>"%LOG%" 2>&1
-set "PYTHON_VERSION_FILE=%RUNTIME%\python-version.txt"
-"%~1" -I -c "import platform; print(platform.python_version())" >"%PYTHON_VERSION_FILE%" 2>>"%LOG%"
-set "PYTHON_DISPLAY_VERSION="
-if exist "%PYTHON_VERSION_FILE%" set /p "PYTHON_DISPLAY_VERSION="<"%PYTHON_VERSION_FILE%"
-del /f /q "%PYTHON_VERSION_FILE%" >nul 2>nul
-if defined PYTHON_DISPLAY_VERSION echo      Using compatible Python %PYTHON_DISPLAY_VERSION%.
-exit /b 0
 
 :InstallEmbedPy
 call :ValidateEmbeddedPython
@@ -647,37 +554,8 @@ call :LogCurrent
 exit /b 0
 
 :ValidateSelectedEnvironment
-if /I "%ENV_MODE%"=="venv" goto ValidateSelectedVenv
-if /I "%ENV_MODE%"=="embedded" goto ValidateSelectedEmbedded
-exit /b 1
-
-:ValidateSelectedVenv
-call :ValidateVenv
-exit /b %ERRORLEVEL%
-
-:ValidateSelectedEmbedded
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
 call :ValidateEmbeddedPython
-exit /b %ERRORLEVEL%
-
-:ValidateVenv
-if not exist "%VENV_PY%" exit /b 1
-if not exist "%VENV_PYW%" exit /b 1
-"%VENV_PY%" -I -c "import sys, struct; ok = sys.implementation.name == 'cpython' and (3, 10) <= sys.version_info[:2] < (3, 15) and struct.calcsize('P') == 8 and sys.prefix != sys.base_prefix; raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-
-:CreateVenv
-if not defined BASE_PY exit /b 1
-call :ValidatePython "%BASE_PY%"
-if errorlevel 1 exit /b 1
-
-if exist "%VENV%" call :RemoveDirectoryRobust "%VENV%"
-if exist "%VENV%" exit /b 1
-
-set "LOG_MESSAGE=Creating virtual environment with: %BASE_PY%"
-call :LogCurrent
-"%BASE_PY%" -I -m venv --copies "%VENV%" >>"%LOG%" 2>&1
-if errorlevel 1 exit /b 1
-call :ValidateVenv
 exit /b %ERRORLEVEL%
 
 :InstallPythonPackages
@@ -687,33 +565,23 @@ call :CurrentPackagesFullyHealthy
 if not errorlevel 1 exit /b 0
 call :BeginPackageTransaction
 if errorlevel 1 exit /b 1
-if /I "%ENV_MODE%"=="venv" call :InstallVenvPackages
-if /I "%ENV_MODE%"=="embedded" call :InstallEmbeddedPackages
+call :InstallEmbeddedPackages
 set "PACKAGE_TRANSACTION_CODE=%ERRORLEVEL%"
 call :FinishPackageTransaction %PACKAGE_TRANSACTION_CODE%
 exit /b %ERRORLEVEL%
 
 :CurrentPackagesFullyHealthy
-if /I "%ENV_MODE%"=="venv" (
-    call :HasPinnedPip
-    if errorlevel 1 exit /b 1
-)
 call :HasPinnedPackages
 if errorlevel 1 exit /b 1
 call :VerifyPythonPackages
 exit /b %ERRORLEVEL%
 
 :BeginPackageTransaction
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
 set "PACKAGE_BACKUP=%RUNTIME%\b"
 set "PACKAGE_BACKUP_NEW=%PACKAGE_BACKUP%.new"
-set "PACKAGE_TARGET="
-set "PACKAGE_BACKUP_PROBE="
-if /I "%ENV_MODE%"=="venv" set "PACKAGE_TARGET=%VENV%"
-if /I "%ENV_MODE%"=="embedded" set "PACKAGE_TARGET=%PYTHON_DIR%"
-if /I "%ENV_MODE%"=="venv" set "PACKAGE_BACKUP_PROBE=Scripts\python.exe"
-if /I "%ENV_MODE%"=="embedded" set "PACKAGE_BACKUP_PROBE=python.exe"
-if not defined PACKAGE_TARGET exit /b 1
-if not defined PACKAGE_BACKUP_PROBE exit /b 1
+set "PACKAGE_TARGET=%PYTHON_DIR%"
+set "PACKAGE_BACKUP_PROBE=python.exe"
 if exist "%PACKAGE_BACKUP%" (
     call :ValidatePrivateTree "%PACKAGE_BACKUP%"
     if errorlevel 1 exit /b 1
@@ -756,50 +624,6 @@ call :ReplaceDirectory "%PACKAGE_BACKUP%" "%PACKAGE_TARGET%"
 if errorlevel 1 exit /b 1
 exit /b %PACKAGE_TRANSACTION_CODE%
 
-:InstallVenvPackages
-call :EnsureCurrentVenvPip
-if errorlevel 1 exit /b 1
-call :HasPinnedPackages
-if errorlevel 1 goto CheckVenvPip
-call :VerifyPythonPackages
-if not errorlevel 1 exit /b 0
-
-:CheckVenvPip
-"%APP_PY%" -I -m pip --version >>"%LOG%" 2>&1
-if not errorlevel 1 goto InstallPinnedVenvPackage
-set "LOG_MESSAGE=pip was missing; attempting ensurepip repair."
-call :LogCurrent
-"%APP_PY%" -I -m ensurepip --upgrade >>"%LOG%" 2>&1
-if errorlevel 1 exit /b 1
-
-:InstallPinnedVenvPackage
-set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION%, httpx %HTTPX_VERSION%, and anyio %ANYIO_VERSION% from official PyPI."
-call :LogCurrent
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
-set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
-goto CheckInstalledPackages
-
-:EnsureCurrentVenvPip
-call :HasPinnedPip
-if not errorlevel 1 exit /b 0
-"%APP_PY%" -I -m pip --version >>"%LOG%" 2>&1
-if not errorlevel 1 goto UpgradeCurrentVenvPip
-set "LOG_MESSAGE=pip was missing; attempting ensurepip repair."
-call :LogCurrent
-"%APP_PY%" -I -m ensurepip --upgrade >>"%LOG%" 2>&1
-if errorlevel 1 exit /b 1
-:UpgradeCurrentVenvPip
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "pip==%PIP_VERSION%" >>"%LOG%" 2>&1
-if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "from importlib.metadata import version; raise SystemExit(0 if version('pip') == '%PIP_VERSION%' else 1)" >>"%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-
-:HasPinnedPip
-if not defined APP_PY exit /b 1
-if not exist "%APP_PY%" exit /b 1
-"%APP_PY%" -I -c "from importlib.metadata import version; raise SystemExit(0 if version('pip') == '%PIP_VERSION%' else 1)" >>"%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-
 :InstallEmbeddedPackages
 call :ValidateEmbeddedPython
 if errorlevel 1 exit /b 1
@@ -825,15 +649,7 @@ if not errorlevel 1 exit /b 0
 echo      A component check failed. Repairing local packages...
 set "LOG_MESSAGE=Initial package validation failed; forcing a clean package reinstall."
 call :LogCurrent
-if /I "%ENV_MODE%"=="venv" goto RepairVenvPackages
-if /I "%ENV_MODE%"=="embedded" goto RepairEmbeddedPackages
-exit /b 1
-
-:RepairVenvPackages
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
-goto RepairPackagesFinished
-
-:RepairEmbeddedPackages
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
 "%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
@@ -848,15 +664,7 @@ if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
 "%APP_PY%" -I -c "import anyio, httpx, PySide6; from importlib.metadata import version; from PySide6.QtCore import qVersion; from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache; assert version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%'; assert version('httpx') == '%HTTPX_VERSION%'; assert version('anyio') == '%ANYIO_VERSION%'; assert hasattr(httpx, 'Client') and hasattr(httpx, 'AsyncClient'); assert QNetworkAccessManager and QNetworkDiskCache; print('%PYSIDE_DISTRIBUTION%=' + version('%PYSIDE_DISTRIBUTION%')); print('httpx=' + version('httpx')); print('anyio=' + version('anyio')); print('Qt=' + qVersion())" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
-if /I "%ENV_MODE%"=="venv" goto CheckVenvDependencies
-if /I "%ENV_MODE%"=="embedded" goto CheckEmbeddedDependencies
-exit /b 1
-
-:CheckVenvDependencies
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check check >>"%LOG%" 2>&1
-exit /b %ERRORLEVEL%
-
-:CheckEmbeddedDependencies
+if /I not "%ENV_MODE%"=="embedded" exit /b 1
 "%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check check >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 
@@ -1020,7 +828,7 @@ set "APP_CHECK_CODE=0"
 "%APP_PY%" -I "%APP_FILE%" --install-check "%CHECK_DIR%" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 if not "%APP_CHECK_CODE%"=="0" goto AppCheckCleanup
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.8'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 6){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.9'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 6){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 
 :AppCheckCleanup

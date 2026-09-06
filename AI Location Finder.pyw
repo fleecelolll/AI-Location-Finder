@@ -20,13 +20,11 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
 SETUP_LOCK_DIR = RUNTIME_DIR / "setup.lock"
-VENV_PYTHON = APP_DIR / ".venv" / "Scripts" / "python.exe"
-VENV_PYTHONW = APP_DIR / ".venv" / "Scripts" / "pythonw.exe"
 EMBEDDED_PYTHON = RUNTIME_DIR / "python" / "python.exe"
 EMBEDDED_PYTHONW = RUNTIME_DIR / "python" / "pythonw.exe"
 APP_MUTEX_NAMES = (
@@ -52,44 +50,37 @@ def show_native_error(message: str, title: str = APP_NAME):
 
 def bootstrap_local_python():
     current = os.path.normcase(os.path.realpath(sys.executable))
-    for local_python, local_pythonw in (
-        (VENV_PYTHON, VENV_PYTHONW),
-        (EMBEDDED_PYTHON, EMBEDDED_PYTHONW),
-    ):
-        valid_executables = {
-            os.path.normcase(os.path.realpath(path))
-            for path in (local_python, local_pythonw)
-            if path.is_file()
-        }
-        if current in valid_executables and sys.flags.isolated:
-            return
-        if not local_python.is_file() or not local_pythonw.is_file():
-            continue
+    valid_executables = {
+        os.path.normcase(os.path.realpath(path))
+        for path in (EMBEDDED_PYTHON, EMBEDDED_PYTHONW)
+        if path.is_file()
+    }
+    if current in valid_executables and sys.flags.isolated:
+        return
+    if EMBEDDED_PYTHON.is_file() and EMBEDDED_PYTHONW.is_file():
         try:
-            if current not in valid_executables:
-                validation = subprocess.run(
-                    [str(local_python), "-I", "-c", "pass"],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=60,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-                if validation.returncode != 0:
-                    continue
-            subprocess.Popen(
-                [
-                    str(local_pythonw),
-                    "-I",
-                    str(Path(__file__).resolve()),
-                    *sys.argv[1:],
-                ],
-                cwd=str(APP_DIR),
+            validation = subprocess.run(
+                [str(EMBEDDED_PYTHON), "-I", "-c", "pass"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=60,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
+            if validation.returncode == 0:
+                subprocess.Popen(
+                    [
+                        str(EMBEDDED_PYTHONW),
+                        "-I",
+                        str(Path(__file__).resolve()),
+                        *sys.argv[1:],
+                    ],
+                    cwd=str(APP_DIR),
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                raise SystemExit(0)
         except (OSError, subprocess.SubprocessError):
-            continue
-        raise SystemExit(0)
+            pass
 
     show_native_error(
         "Setup is missing, incomplete, or no longer usable.\n\n"
@@ -503,11 +494,6 @@ def _unprotect_local_secret_state(protected_text: str, purpose: str):
     return secret, not current_format
 
 
-def unprotect_local_secret(protected_text: str, purpose="local-setting") -> str:
-    secret, _ = _unprotect_local_secret_state(protected_text, purpose)
-    return secret
-
-
 def redact_secret_text(message, *secrets) -> str:
     text = str(message or "")
     for secret in secrets:
@@ -786,19 +772,6 @@ def accuracy_tip_sections():
             heading = heading_names.get(stripped.casefold(), stripped)
     finish_section()
     return tuple(sections)
-
-
-def numbered_accuracy_tips() -> str:
-
-    blocks = []
-    for heading, tips in accuracy_tip_sections():
-        lines = [heading]
-        for number, tip in enumerate(tips, 1):
-            lines.extend((f"{number}. {tip}", ""))
-        while lines and not lines[-1]:
-            lines.pop()
-        blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
 
 
 def accuracy_tips_html() -> str:
@@ -4386,10 +4359,7 @@ class LocationFinder(QMainWindow):
                 self.page_layout.setStretch(1, 1)
                 self.left_panel.setMinimumWidth(390)
                 self.left_panel.setMaximumWidth(485)
-                if constrained:
-                    self.map_panel.setMinimumWidth(desired_map_minimum)
-                else:
-                    self.map_panel.setMinimumWidth(desired_map_minimum)
+                self.map_panel.setMinimumWidth(desired_map_minimum)
                 self.left_tabs.setSizePolicy(
                     QSizePolicy.Expanding,
                     QSizePolicy.Expanding,

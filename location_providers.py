@@ -18,14 +18,6 @@ import httpx
 
 EFFORT_LABELS = ("Low", "Medium", "High", "Ultra")
 
-UNSUPPORTED_PROVIDER_NOTES = {
-    "deepseek": (
-        "DeepSeek is not offered because its current official hosted API "
-        "documents text input only, not image input."
-    )
-}
-
-
 @dataclass(frozen=True, slots=True)
 class ProviderSpec:
 
@@ -148,9 +140,9 @@ PROVIDERS = (
         default_model_id="claude-sonnet-5",
         privacy_note=(
             "Anthropic API retention depends on the account's data terms. "
-            "Eligible Zero Data Retention arrangements do not cover Claude "
-            "Fable 5.1, which requires 30-day retention. Structured-output "
-            "schemas may be cached for up to 24 hours."
+            "Claude Fable 5.1 requires 30-day retention and is unavailable "
+            "under Zero Data Retention unless Anthropic expressly authorizes "
+            "it. Structured-output schemas may be cached for up to 24 hours."
         ),
     ),
     ProviderSpec(
@@ -311,10 +303,10 @@ _GEMINI_FLASH_PRICE_NOTE = (
 _ANTHROPIC_FABLE_PRIVACY_WARNING = PrivacyWarning(
     title="Claude Fable 5.1 privacy warning",
     message=(
-        "Claude Fable 5.1 requires 30-day retention and is not covered by "
-        "Anthropic Zero Data Retention arrangements. Continuing sends the "
-        "selected image and prompt directly to Anthropic under your API "
-        "account's data terms."
+        "Claude Fable 5.1 requires 30-day retention and is unavailable under "
+        "Anthropic Zero Data Retention unless Anthropic expressly authorizes "
+        "it. Continuing sends the selected image and prompt directly to "
+        "Anthropic under your API account's data terms."
     ),
     provider_name="Anthropic",
     details_label="Review Anthropic privacy details",
@@ -396,53 +388,6 @@ MODELS = (
         1.25, 2.5, 1_000_000, _EFFORT_XAI_OPTIONAL,
     ),
 )
-
-
-OFFICIAL_SOURCES = {
-    "anthropic_models": "https://platform.claude.com/docs/en/about-claude/models/overview",
-    "anthropic_messages": "https://platform.claude.com/docs/en/api/messages/create",
-    "anthropic_structured": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-    "anthropic_effort": "https://platform.claude.com/docs/en/build-with-claude/effort",
-    "anthropic_thinking": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
-    "anthropic_latency": (
-        "https://platform.claude.com/docs/en/test-and-evaluate/"
-        "strengthen-guardrails/reduce-latency"
-    ),
-    "anthropic_pricing": "https://platform.claude.com/docs/en/about-claude/pricing",
-    "anthropic_vision": "https://platform.claude.com/docs/en/build-with-claude/vision",
-    "anthropic_prompt_cache": (
-        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
-    ),
-    "anthropic_fable": "https://platform.claude.com/docs/en/models/fable-5-1/overview",
-    "anthropic_privacy": _ANTHROPIC_FABLE_PRIVACY_WARNING.details_url,
-    "openai_models": "https://developers.openai.com/api/docs/models",
-    "openai_vision": "https://developers.openai.com/api/docs/guides/images-vision",
-    "openai_structured": "https://developers.openai.com/api/docs/guides/structured-outputs",
-    "openai_latest": "https://developers.openai.com/api/docs/guides/latest-model",
-    "openai_prompt_cache": (
-        "https://developers.openai.com/api/docs/guides/prompt-caching"
-    ),
-    "google_models": "https://ai.google.dev/gemini-api/docs/models",
-    "google_pricing": "https://ai.google.dev/gemini-api/docs/pricing",
-    "google_gemini_38": (
-        "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"
-    ),
-    "google_interactions": "https://ai.google.dev/gemini-api/docs/interactions-overview",
-    "google_structured": "https://ai.google.dev/gemini-api/docs/structured-output",
-    "google_thinking": "https://ai.google.dev/gemini-api/docs/thinking",
-    "google_media_resolution": "https://ai.google.dev/gemini-api/docs/media-resolution",
-    "google_errors": "https://ai.google.dev/gemini-api/docs/api-errors",
-    "google_prompt_cache": "https://ai.google.dev/gemini-api/docs/caching",
-    "xai_models": "https://docs.x.ai/developers/models",
-    "xai_grok_46": "https://docs.x.ai/developers/grok-4-6",
-    "xai_images": "https://docs.x.ai/developers/model-capabilities/images/understanding",
-    "xai_structured": "https://docs.x.ai/developers/model-capabilities/text/structured-outputs",
-    "xai_reasoning": "https://docs.x.ai/developers/model-capabilities/text/reasoning",
-    "xai_prompt_cache": (
-        "https://docs.x.ai/developers/advanced-api-usage/prompt-caching"
-    ),
-    "xai_pricing": "https://docs.x.ai/developers/pricing",
-}
 
 
 _PROVIDER_INDEX = {provider.id: provider for provider in PROVIDERS}
@@ -1397,9 +1342,11 @@ def _safe_provider_error(
 
     if provider.id == "anthropic" and model.id == "claude-fable-5-1":
         privacy_message = (
-            "Anthropic requires 30-day data retention to use Claude Fable 5.1. "
-            "Enable it for this workspace in Claude Console under Settings, "
-            "Workspaces, Privacy controls, or choose another model."
+            "Anthropic requires 30-day data retention to use Claude Fable 5.1 "
+            "unless it has expressly authorized Zero Data Retention for this "
+            "account. Enable retention for this workspace in Claude Console "
+            "under Settings, Workspaces, Privacy controls, or choose another "
+            "model."
         )
     else:
         privacy_message = (
@@ -1816,7 +1763,10 @@ def self_test() -> bool:
     if any(not model.image_input for model in MODELS):
         raise RuntimeError("A non-image model entered the catalog.")
     if any(model.provider_id == "deepseek" for model in MODELS):
-        raise RuntimeError("DeepSeek must remain excluded until its official API supports images.")
+        raise RuntimeError(
+            "DeepSeek must remain excluded while its only image-capable hosted "
+            "model is explicitly experimental, not a stable release model."
+        )
     if any(model.company not in model.display_name or model.tier not in model.display_name for model in MODELS):
         raise RuntimeError("Every model label must include company and tier.")
     if any(set(dict(model.effort_mapping)) != set(EFFORT_LABELS) for model in MODELS):

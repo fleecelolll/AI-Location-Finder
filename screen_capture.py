@@ -27,6 +27,7 @@ _BI_RGB = 0
 _HGDI_ERROR = ctypes.c_void_p(-1).value
 _SIGNED_INT_MIN = -(2**31)
 _SIGNED_INT_MAX = 2**31 - 1
+_MAX_CAPTURE_BYTES = 256 * 1024 * 1024
 
 
 class ScreenCaptureError(RuntimeError):
@@ -376,7 +377,13 @@ def _validated_capture_geometry(
         raise ScreenCaptureError("The selected monitor extends outside Windows capture limits.")
     if width > sys.maxsize // 4 // height:
         raise ScreenCaptureError("The selected monitor image is too large for memory.")
-    return left, top, width, height, width * height * 4
+    byte_count = width * height * 4
+    if byte_count > _MAX_CAPTURE_BYTES:
+        raise ScreenCaptureError(
+            "The selected capture area is too large to capture safely at once. "
+            "Choose a smaller monitor selection."
+        )
+    return left, top, width, height, byte_count
 
 
 def _copy_capture_buffer(
@@ -562,11 +569,6 @@ def capture_screen(
     return _capture_rectangle(*current.physical_rect)
 
 
-def capture_virtual_screen() -> QImage:
-
-    return capture_screen(ALL_MONITORS_ID)
-
-
 def image_to_png_bytes(image: QImage) -> bytes:
 
     if image.isNull():
@@ -580,13 +582,6 @@ def image_to_png_bytes(image: QImage) -> bytes:
         return bytes(buffer.data())
     finally:
         buffer.close()
-
-
-def capture_screen_png(
-    target: str | MonitorInfo | None = None,
-) -> bytes:
-
-    return image_to_png_bytes(capture_screen(target))
 
 
 def safe_enumeration_test() -> tuple[MonitorInfo, ...]:
@@ -653,6 +648,7 @@ def run_self_tests(include_system_enumeration: bool = True) -> tuple[str, ...]:
         (0.5, 0, 1920, 1080),
         (0, 0, 0, 1080),
         (_SIGNED_INT_MAX, 0, 2, 1),
+        (0, 0, (_MAX_CAPTURE_BYTES // 4) + 1, 1),
     ):
         try:
             _validated_capture_geometry(*invalid_geometry)
