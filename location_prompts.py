@@ -14,9 +14,9 @@ GEOGUESSR_MODE = "GeoGuessr screenshot"
 PROMPT_MODES = (GEOGUESSR_MODE, REGULAR_MODE)
 EFFORT_LEVELS = ("Low", "Medium", "High", "Ultra")
 
-_PRE_COMPACTION_MATRIX_CHARS = 2_598_451
-_PRE_COMPACTION_MATRIX_LEXICAL_UNITS = 502_672
-_EXPECTED_MATRIX_PROMPTS = 576
+_PRE_COMPACTION_MATRIX_CHARS = 2_814_989
+_PRE_COMPACTION_MATRIX_LEXICAL_UNITS = 544_562
+_EXPECTED_MATRIX_PROMPTS = 624
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,10 +163,10 @@ def _profile(
 
 
 PROMPT_PROFILES = {
-    "claude-fable-5": _profile(
-        "anthropic.claude-fable-5.v1",
+    "claude-fable-5-1": _profile(
+        "anthropic.claude-fable-5-1.v1",
         "claude",
-        "Claude Fable 5",
+        "Claude Fable 5.1",
         "xml",
         "Inventory decision-changing clues, compare at most three plausible areas, then run a strict contradiction audit.",
         "Compare at most three credible country or region hypotheses before adjudicating the pin.",
@@ -194,6 +194,14 @@ PROMPT_PROFILES = {
         "xml",
         "Use a fast checklist for legible text, distinctive infrastructure, and the strongest conflict.",
         "Use high-signal country clues first, camera meta last, and no speculative branches.",
+    ),
+    "gpt-6-astra": _profile(
+        "openai.gpt-6-astra.v1",
+        "openai",
+        "GPT-6 Astra",
+        "sections",
+        "Use the model's strongest visual reasoning on exact identity, subtle context, and one rigorous rival before committing.",
+        "Resolve the country first, then use only mutually confirming regional clues to place the pin.",
     ),
     "gpt-5.6-sol": _profile(
         "openai.gpt-5.6-sol.v1",
@@ -227,10 +235,10 @@ PROMPT_PROFILES = {
         "Reinspect only decision-relevant small text and spatial relationships, then test the exact point against the scene.",
         "Check solar geometry, camera meta, and geography separately, then merge after one contradiction review.",
     ),
-    "gemini-3.7-flash": _profile(
-        "google.gemini-3.7-flash.v1",
+    "gemini-3.8-flash": _profile(
+        "google.gemini-3.8-flash.v1",
         "gemini",
-        "Gemini 3.7 Flash",
+        "Gemini 3.8 Flash",
         "phases",
         "Use one native multimodal scene and OCR sweep, then verify the strongest spatial relationship before coordinate calibration.",
         "Scan each panorama zone once, then use spatial reasoning to challenge only the closest geographic rival.",
@@ -263,7 +271,7 @@ PROMPT_PROFILES = {
 
 
 FAST_MODEL_TUNING = {
-    "anthropic.claude-fable-5.v1": (
+    "anthropic.claude-fable-5-1.v1": (
         "Use adaptive reasoning only until one distinctive clue combination resolves the scene. Do not build the broad inventory used by deeper Fable runs.",
         "Use a short clue ledger, pick the strongest country or region, and stop after one geographic contradiction check.",
     ),
@@ -278,6 +286,10 @@ FAST_MODEL_TUNING = {
     "anthropic.claude-haiku-4.5.v1": (
         "Make one fast visual pass. Prefer an exact public landmark or legible place text, then run one brief conflict check and return.",
         "Run one country-first checklist in scene order. Use camera meta only to confirm geography, then return immediately.",
+    ),
+    "openai.gpt-6-astra.v1": (
+        "Use a compact outcome-first visual audit. Stop after the leading exact identity survives one strong falsification test.",
+        "Resolve the country from the smallest decisive clue set, challenge it once, and return the best-supported regional pin.",
     ),
     "openai.gpt-5.6-sol.v1": (
         "Use a compact outcome-first audit. Extract only decision-changing details and stop after the leading location survives one falsification test.",
@@ -295,7 +307,7 @@ FAST_MODEL_TUNING = {
         "Use one native multimodal scan at scene and text scale. Reinspect only the single detail needed to confirm the leading public location.",
         "Scan the road, horizon, text, and compass once, then revisit only the strongest unresolved country clue.",
     ),
-    "google.gemini-3.7-flash.v1": (
+    "google.gemini-3.8-flash.v1": (
         "Use one efficient native multimodal scene and OCR sweep, followed by one spatial consistency check. Do not start a second broad scan.",
         "Sweep the panorama zones once and use spatial reasoning on only the highest-value road or language clue before returning.",
     ),
@@ -315,16 +327,17 @@ FAST_MODEL_TUNING = {
 
 
 _PROFILE_MATCHERS = (
-    ("claude-fable-5", ("claude-fable-5",)),
+    ("claude-fable-5-1", ("claude-fable-5-1", "claude-fable-5")),
     ("claude-opus-5", ("claude-opus-5",)),
     ("claude-sonnet-5", ("claude-sonnet-5",)),
     ("claude-haiku-4.5", ("claude-haiku-4.5", "claude-haiku-4-5")),
+    ("gpt-6-astra", ("gpt-6-astra",)),
     ("gpt-5.6-sol", ("gpt-5.6-sol",)),
     ("gpt-5.6-terra", ("gpt-5.6-terra",)),
     ("gpt-5.6-luna", ("gpt-5.6-luna",)),
     ("gemini-3.1-pro", ("gemini-3.1-pro",)),
     ("gemini-3.5-flash-lite", ("gemini-3.5-flash-lite",)),
-    ("gemini-3.7-flash", ("gemini-3.7-flash",)),
+    ("gemini-3.8-flash", ("gemini-3.8-flash", "gemini-3.7-flash")),
     ("grok-4.6", ("grok-4.6",)),
     ("grok-4.3", ("grok-4.3",)),
 )
@@ -1139,7 +1152,7 @@ def run_self_tests(catalog: Sequence[Any] | None = None) -> list[str]:
         "Full prompt matrix did not reduce lexical-token proxy volume enough.",
     )
     checks.append(
-        "all 576 model, mode, effort, and pass prompts keep accuracy markers "
+        "all 624 model, mode, effort, and pass prompts keep accuracy markers "
         "within compact ceilings"
     )
     checks.append(
@@ -1217,7 +1230,7 @@ def run_self_tests(catalog: Sequence[Any] | None = None) -> list[str]:
     checks.append("fast-match clue data remains escaped and bounded")
 
     invisible_hostile = build_analysis_prompt(
-        "gemini-3.7-flash",
+        "gemini-3.8-flash",
         REGULAR_MODE,
         1,
         None,
@@ -1236,7 +1249,7 @@ def run_self_tests(catalog: Sequence[Any] | None = None) -> list[str]:
     checks.append("invisible Unicode prompt-injection controls are removed")
 
     final_pass = build_analysis_prompt(
-        "gemini-3.7-flash",
+        "gemini-3.8-flash",
         GEOGUESSR_MODE,
         3,
         [{"location": "A"}, {"location": "B"}],

@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -122,6 +122,7 @@ try:
         PROVIDERS,
         ProviderRequestError,
         call_vision_model,
+        current_model_id,
         default_model,
         estimate_cost,
         model_by_id,
@@ -4156,13 +4157,14 @@ class LocationFinder(QMainWindow):
         saved_model_id = str(
             self.settings.value(f"models/{provider.id}", "") or ""
         )
+        current_saved_model_id = current_model_id(provider.id, saved_model_id)
         try:
-            chosen = model_by_id(provider.id, saved_model_id)
+            chosen = model_by_id(provider.id, current_saved_model_id)
         except KeyError:
             chosen = default_model(provider.id)
-            if saved_model_id:
-                self.settings.setValue(f"models/{provider.id}", chosen.id)
-                self.settings.sync()
+        if saved_model_id and saved_model_id != chosen.id:
+            self.settings.setValue(f"models/{provider.id}", chosen.id)
+            self.settings.sync()
         index = [model.id for model in available_models].index(chosen.id)
         self.model_dropdown.set_items(
             [model.label for model in available_models],
@@ -6307,22 +6309,22 @@ def run_self_test(folder: Path) -> int:
             str(legacy_model_path),
             QSettings.IniFormat,
         )
-        legacy_model_settings.setValue("provider", "xai")
-        legacy_model_settings.setValue("models/xai", "grok-4.5")
+        legacy_model_settings.setValue("provider", "anthropic")
+        legacy_model_settings.setValue("models/anthropic", "claude-fable-5")
         legacy_model_settings.sync()
         legacy_model_window = LocationFinder(
             settings_path=legacy_model_path,
             testing=True,
         )
-        expected_xai_default = default_model("xai")
+        expected_migrated_model = model_by_id("anthropic", "claude-fable-5-1")
         migrated_model_id = str(
-            legacy_model_window.settings.value("models/xai", "") or ""
+            legacy_model_window.settings.value("models/anthropic", "") or ""
         )
         if (
-            legacy_model_window.selected_model().id != expected_xai_default.id
-            or migrated_model_id != expected_xai_default.id
+            legacy_model_window.selected_model().id != expected_migrated_model.id
+            or migrated_model_id != expected_migrated_model.id
         ):
-            raise RuntimeError("A retired saved model was not migrated to its replacement.")
+            raise RuntimeError("A superseded saved model was not migrated to its replacement.")
         legacy_model_window.close()
         legacy_model_window.deleteLater()
 
@@ -7034,12 +7036,12 @@ def run_self_test(folder: Path) -> int:
         window.toggle_key_visibility()
         window.provider_dropdown.select(provider_by_id("openai").label)
         QApplication.processEvents()
-        if window._current_provider_id != "openai" or len(window._model_by_label) != 3:
+        if window._current_provider_id != "openai" or len(window._model_by_label) != 4:
             raise RuntimeError("Direct-provider switching did not rebuild the model list.")
         if window.api_key_input.echoMode() != QLineEdit.Password:
             raise RuntimeError("Provider switching exposed the next API key.")
         window.provider_dropdown.select(provider_by_id("anthropic").label)
-        fable = model_by_id("anthropic", "claude-fable-5")
+        fable = model_by_id("anthropic", "claude-fable-5-1")
         previous_label = window.model_dropdown.currentText()
         original_privacy_dialog = window._show_model_privacy_warning
         window._show_model_privacy_warning = lambda selected, notice: False

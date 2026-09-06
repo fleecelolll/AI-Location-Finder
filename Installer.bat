@@ -89,6 +89,7 @@ set "PYTHON_VERSION=3.14.7"
 set "PYSIDE_VERSION=6.11.2"
 set "PYSIDE_DISTRIBUTION=PySide6-Essentials"
 set "HTTPX_VERSION=0.28.1"
+set "ANYIO_VERSION=4.15.1"
 set "PIP_VERSION=26.2.1"
 set "PYPI_INDEX=https://pypi.org/simple"
 set "PIP_WHEEL_URL=https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl"
@@ -474,7 +475,7 @@ exit /b %ERRORLEVEL%
 exit /b %ERRORLEVEL%
 
 :ValidatePrivatePaths
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$volume=[IO.Path]::GetPathRoot($root).TrimEnd('\');if([string]::IsNullOrWhiteSpace($root)-or $root -ieq $volume){throw 'Unsafe project root.'};$rootItem=Get-Item -LiteralPath $root -Force;if(-not $rootItem.PSIsContainer-or($rootItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The project root must be a normal directory.'};$targets=@($env:RUNTIME,$env:VENV,$env:DOWNLOADS,$env:PYTHON_DIR,(Join-Path $env:PYTHON_DIR 'Lib'),$env:LOCAL_SITE,$env:SETUP_LOCK,($env:PYTHON_DIR+'.new'),($env:PYTHON_DIR+'.old'),($env:VENV+'.old'),(Join-Path $env:RUNTIME 'environment-before-package-repair'),(Join-Path $env:RUNTIME 'environment-before-package-repair.new'),(Join-Path $env:RUNTIME 'environment-before-package-repair.old'),(Join-Path $env:RUNTIME 'setup-check'));foreach($name in @('FFMPEG_DIR','DENO_DIR','HERCULES_DIR','LUA_DIR')){$value=[Environment]::GetEnvironmentVariable($name);if($value){$targets+=@($value,($value+'.new'),($value+'.old'),($value+'.extract'))}};$prefix=$root+'\';foreach($target in $targets){if([string]::IsNullOrWhiteSpace($target)){throw 'A private setup path is empty.'};$full=[IO.Path]::GetFullPath($target).TrimEnd('\');if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup path escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup directory is unsafe.'}}};foreach($file in @($env:LOG,$env:SETUP_MARKER,($env:SETUP_MARKER+'.new'),$env:SETUP_LOCK_OWNER,($env:SETUP_LOCK_OWNER+'.new'),$env:PIP_WHEEL)){if([string]::IsNullOrWhiteSpace($file)){continue};$full=[IO.Path]::GetFullPath($file);if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup file escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if($item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup file is unsafe.'}}};exit 0" >nul 2>nul
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath($env:ROOT).TrimEnd('\');$volume=[IO.Path]::GetPathRoot($root).TrimEnd('\');if([string]::IsNullOrWhiteSpace($root)-or $root -ieq $volume){throw 'Unsafe project root.'};$rootItem=Get-Item -LiteralPath $root -Force;if(-not $rootItem.PSIsContainer-or($rootItem.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'The project root must be a normal directory.'};$targets=@($env:RUNTIME,$env:VENV,$env:DOWNLOADS,$env:PYTHON_DIR,(Join-Path $env:PYTHON_DIR 'Lib'),$env:LOCAL_SITE,$env:SETUP_LOCK,($env:PYTHON_DIR+'.new'),($env:PYTHON_DIR+'.old'),($env:VENV+'.old'),(Join-Path $env:RUNTIME 'b'),(Join-Path $env:RUNTIME 'b.new'),(Join-Path $env:RUNTIME 'b.old'),(Join-Path $env:RUNTIME 'setup-check'));foreach($name in @('FFMPEG_DIR','DENO_DIR','HERCULES_DIR','LUA_DIR')){$value=[Environment]::GetEnvironmentVariable($name);if($value){$targets+=@($value,($value+'.new'),($value+'.old'),($value+'.extract'))}};$prefix=$root+'\';foreach($target in $targets){if([string]::IsNullOrWhiteSpace($target)){throw 'A private setup path is empty.'};$full=[IO.Path]::GetFullPath($target).TrimEnd('\');if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup path escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if(-not $item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup directory is unsafe.'}}};foreach($file in @($env:LOG,$env:SETUP_MARKER,($env:SETUP_MARKER+'.new'),$env:SETUP_LOCK_OWNER,($env:SETUP_LOCK_OWNER+'.new'),$env:PIP_WHEEL)){if([string]::IsNullOrWhiteSpace($file)){continue};$full=[IO.Path]::GetFullPath($file);if(-not $full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'A private setup file escaped the project root.'};if(Test-Path -LiteralPath $full){$item=Get-Item -LiteralPath $full -Force;if($item.PSIsContainer-or($item.Attributes-band[IO.FileAttributes]::ReparsePoint)){throw 'A private setup file is unsafe.'}}};exit 0" >nul 2>nul
 exit /b %ERRORLEVEL%
 
 :WriteSetupMarker
@@ -695,7 +696,7 @@ call :VerifyPythonPackages
 exit /b %ERRORLEVEL%
 
 :BeginPackageTransaction
-set "PACKAGE_BACKUP=%RUNTIME%\environment-before-package-repair"
+set "PACKAGE_BACKUP=%RUNTIME%\b"
 set "PACKAGE_BACKUP_NEW=%PACKAGE_BACKUP%.new"
 set "PACKAGE_TARGET="
 set "PACKAGE_BACKUP_PROBE="
@@ -764,9 +765,9 @@ call :LogCurrent
 if errorlevel 1 exit /b 1
 
 :InstallPinnedVenvPackage
-set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION% and httpx %HTTPX_VERSION% from official PyPI."
+set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION%, httpx %HTTPX_VERSION%, and anyio %ANYIO_VERSION% from official PyPI."
 call :LogCurrent
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
 set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
 goto CheckInstalledPackages
 
@@ -800,11 +801,11 @@ call :VerifyPythonPackages
 if not errorlevel 1 exit /b 0
 
 :InstallFullEmbeddedPackages
-set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION% and httpx %HTTPX_VERSION% into embedded CPython from official PyPI."
+set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION%, httpx %HTTPX_VERSION%, and anyio %ANYIO_VERSION% into embedded CPython from official PyPI."
 call :LogCurrent
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
 set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
 
 :CheckInstalledPackages
@@ -821,13 +822,13 @@ if /I "%ENV_MODE%"=="embedded" goto RepairEmbeddedPackages
 exit /b 1
 
 :RepairVenvPackages
-"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -m pip --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
 goto RepairPackagesFinished
 
 :RepairEmbeddedPackages
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
 
 :RepairPackagesFinished
 if errorlevel 1 exit /b 1
@@ -837,7 +838,7 @@ exit /b %ERRORLEVEL%
 :VerifyPythonPackages
 if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
-"%APP_PY%" -I -c "import httpx, PySide6; from importlib.metadata import version; from PySide6.QtCore import qVersion; from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache; assert version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%'; assert version('httpx') == '%HTTPX_VERSION%'; assert hasattr(httpx, 'Client') and hasattr(httpx, 'AsyncClient'); assert QNetworkAccessManager and QNetworkDiskCache; print('%PYSIDE_DISTRIBUTION%=' + version('%PYSIDE_DISTRIBUTION%')); print('httpx=' + version('httpx')); print('Qt=' + qVersion())" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import anyio, httpx, PySide6; from importlib.metadata import version; from PySide6.QtCore import qVersion; from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache; assert version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%'; assert version('httpx') == '%HTTPX_VERSION%'; assert version('anyio') == '%ANYIO_VERSION%'; assert hasattr(httpx, 'Client') and hasattr(httpx, 'AsyncClient'); assert QNetworkAccessManager and QNetworkDiskCache; print('%PYSIDE_DISTRIBUTION%=' + version('%PYSIDE_DISTRIBUTION%')); print('httpx=' + version('httpx')); print('anyio=' + version('anyio')); print('Qt=' + qVersion())" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
 if /I "%ENV_MODE%"=="venv" goto CheckVenvDependencies
 if /I "%ENV_MODE%"=="embedded" goto CheckEmbeddedDependencies
@@ -854,7 +855,7 @@ exit /b %ERRORLEVEL%
 :HasPinnedPackages
 if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
-"%APP_PY%" -I -c "import httpx, PySide6; from importlib.metadata import version; from PySide6.QtNetwork import QNetworkAccessManager; ok = version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%' and version('httpx') == '%HTTPX_VERSION%' and bool(QNetworkAccessManager); raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import anyio, httpx, PySide6; from importlib.metadata import version; from PySide6.QtNetwork import QNetworkAccessManager; ok = version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%' and version('httpx') == '%HTTPX_VERSION%' and version('anyio') == '%ANYIO_VERSION%' and bool(QNetworkAccessManager); raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 
 :ResetEmbeddedPackages
@@ -1011,7 +1012,7 @@ set "APP_CHECK_CODE=0"
 "%APP_PY%" -I "%APP_FILE%" --install-check "%CHECK_DIR%" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 if not "%APP_CHECK_CODE%"=="0" goto AppCheckCleanup
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.6'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 6){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.7'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 6){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 
 :AppCheckCleanup

@@ -19,7 +19,6 @@ from PySide6.QtCore import (
     QRectF,
     QSize,
     Qt,
-    QStandardPaths,
     QTimer,
     QUrl,
     Signal,
@@ -507,13 +506,7 @@ class WorldMapView(QWidget):
         manager.finished.connect(self._network_reply_finished)
 
         cache = QNetworkDiskCache(manager)
-        cache_root = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
-        cache_path = str(
-            Path(cache_root or str(MODULE_DIR / ".runtime"))
-            / "fleece.lol"
-            / "AI Location Finder"
-            / "map-tiles"
-        )
+        cache_path = str(MODULE_DIR / ".runtime" / "map-tiles")
         cache.setCacheDirectory(cache_path)
         cache.setMaximumCacheSize(NETWORK_CACHE_BYTES)
         manager.setCache(cache)

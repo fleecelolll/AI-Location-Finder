@@ -149,7 +149,7 @@ PROVIDERS = (
         privacy_note=(
             "Anthropic API retention depends on the account's data terms. "
             "Eligible Zero Data Retention arrangements do not cover Claude "
-            "Fable 5, which requires 30-day retention. Structured-output "
+            "Fable 5.1, which requires 30-day retention. Structured-output "
             "schemas may be cached for up to 24 hours."
         ),
     ),
@@ -157,7 +157,7 @@ PROVIDERS = (
         id="openai",
         name="OpenAI",
         display_name="OpenAI - direct API",
-        description="Use an OpenAI key to call the GPT-5.6 family directly.",
+        description="Use an OpenAI key to call current GPT-6 and GPT-5.6 models directly.",
         api_base_url="https://api.openai.com/v1",
         request_url="https://api.openai.com/v1/responses",
         api_key_url="https://platform.openai.com/api-keys",
@@ -181,7 +181,7 @@ PROVIDERS = (
         api_key_url="https://aistudio.google.com/app/apikey",
         docs_url="https://ai.google.dev/gemini-api/docs/interactions-overview",
         api_key_placeholder="Paste a Google Gemini API key",
-        default_model_id="gemini-3.7-flash",
+        default_model_id="gemini-3.8-flash",
         privacy_note=(
             "Every Interactions API request sets store=false. Under Google's "
             "terms, unpaid-service data may be used to improve products; paid-"
@@ -309,9 +309,9 @@ _GEMINI_FLASH_PRICE_NOTE = (
     "Cost estimates automatically use the later $1.50 input / $7.50 output price."
 )
 _ANTHROPIC_FABLE_PRIVACY_WARNING = PrivacyWarning(
-    title="Claude Fable 5 privacy warning",
+    title="Claude Fable 5.1 privacy warning",
     message=(
-        "Claude Fable 5 requires 30-day retention and is not covered by "
+        "Claude Fable 5.1 requires 30-day retention and is not covered by "
         "Anthropic Zero Data Retention arrangements. Continuing sends the "
         "selected image and prompt directly to Anthropic under your API "
         "account's data terms."
@@ -319,14 +319,14 @@ _ANTHROPIC_FABLE_PRIVACY_WARNING = PrivacyWarning(
     provider_name="Anthropic",
     details_label="Review Anthropic privacy details",
     details_url="https://platform.claude.com/docs/en/manage-claude/api-and-data-retention",
-    accept_label="Use Claude Fable 5",
+    accept_label="Use Claude Fable 5.1",
 )
 
 
 MODELS = (
     _model(
-        "anthropic", "claude-fable-5", "Anthropic", "Claude Fable 5",
-        "Ultra-premium", "maximum", "slow", "Anthropic's highest-capability widely released model.",
+        "anthropic", "claude-fable-5-1", "Anthropic", "Claude Fable 5.1",
+        "Ultra-premium", "maximum", "slow", "Anthropic's current highest-capability model.",
         10.0, 50.0, 1_000_000, _EFFORT_FULL, reasoning_mandatory=True,
         privacy_warning=_ANTHROPIC_FABLE_PRIVACY_WARNING,
     ),
@@ -347,8 +347,13 @@ MODELS = (
     ),
 
     _model(
+        "openai", "gpt-6-astra", "OpenAI", "GPT-6 Astra",
+        "Ultra-premium", "maximum", "slow", "OpenAI's current flagship multimodal model.",
+        10.0, 50.0, 1_050_000, _EFFORT_FULL, reasoning_mandatory=True,
+    ),
+    _model(
         "openai", "gpt-5.6-sol", "OpenAI", "GPT-5.6 Sol",
-        "Ultra-premium", "maximum", "slow", "OpenAI's flagship GPT-5.6 model.",
+        "Premium", "maximum", "slow", "High-capability GPT-5.6 visual reasoning.",
         4.0, 20.0, 1_050_000, _EFFORT_FULL,
     ),
     _model(
@@ -369,7 +374,7 @@ MODELS = (
         reasoning_mandatory=True, pricing_note=_GEMINI_PRO_PRICE_NOTE,
     ),
     _model(
-        "google", "gemini-3.7-flash", "Google", "Gemini 3.7 Flash",
+        "google", "gemini-3.8-flash", "Google", "Gemini 3.8 Flash",
         "Balanced", "high", "fast", "Google's latest stable multimodal Flash model.",
         1.5, 7.5, 1_048_576, _EFFORT_HIGH_CEILING, reasoning_mandatory=True,
         pricing_note=_GEMINI_FLASH_PRICE_NOTE,
@@ -408,10 +413,7 @@ OFFICIAL_SOURCES = {
     "anthropic_prompt_cache": (
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
     ),
-    "anthropic_fable": (
-        "https://platform.claude.com/docs/en/about-claude/models/"
-        "introducing-claude-fable-5-and-claude-mythos-5"
-    ),
+    "anthropic_fable": "https://platform.claude.com/docs/en/models/fable-5-1/overview",
     "anthropic_privacy": _ANTHROPIC_FABLE_PRIVACY_WARNING.details_url,
     "openai_models": "https://developers.openai.com/api/docs/models",
     "openai_vision": "https://developers.openai.com/api/docs/guides/images-vision",
@@ -422,8 +424,8 @@ OFFICIAL_SOURCES = {
     ),
     "google_models": "https://ai.google.dev/gemini-api/docs/models",
     "google_pricing": "https://ai.google.dev/gemini-api/docs/pricing",
-    "google_gemini_37": (
-        "https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash"
+    "google_gemini_38": (
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash"
     ),
     "google_interactions": "https://ai.google.dev/gemini-api/docs/interactions-overview",
     "google_structured": "https://ai.google.dev/gemini-api/docs/structured-output",
@@ -445,6 +447,10 @@ OFFICIAL_SOURCES = {
 
 _PROVIDER_INDEX = {provider.id: provider for provider in PROVIDERS}
 _MODEL_INDEX = {(model.provider_id, model.id): model for model in MODELS}
+_MODEL_ID_MIGRATIONS = {
+    ("anthropic", "claude-fable-5"): "claude-fable-5-1",
+    ("google", "gemini-3.7-flash"): "gemini-3.8-flash",
+}
 _RESPONSE_TOKENS_BY_EFFORT = {
     "Low": 8_192,
     "Medium": 12_288,
@@ -481,6 +487,12 @@ def model_by_id(provider_id: str, model_id: str) -> ModelSpec:
         return _MODEL_INDEX[(provider_id, model_id)]
     except KeyError as error:
         raise KeyError(f"Unknown model for {provider_id}: {model_id}") from error
+
+
+def current_model_id(provider_id: str, model_id: str) -> str:
+    provider_by_id(provider_id)
+    clean_model_id = str(model_id or "").strip()
+    return _MODEL_ID_MIGRATIONS.get((provider_id, clean_model_id), clean_model_id)
 
 
 def default_model(provider_id: str) -> ModelSpec:
@@ -531,7 +543,7 @@ def effective_model_prices(
     if not isinstance(current_date, date):
         raise TypeError("pricing_date must be a date.")
     key = (model.provider_id, model.id)
-    if key == ("google", "gemini-3.7-flash") and current_date <= date(2026, 12, 31):
+    if key == ("google", "gemini-3.8-flash") and current_date <= date(2026, 12, 31):
         return 0.75, 3.75
     return model.input_cost_per_million, model.output_cost_per_million
 
@@ -1350,7 +1362,7 @@ def _signature_error_category(
         )
     ):
         return "request_configuration"
-    if provider.id == "anthropic" and model.id == "claude-fable-5" and any(
+    if provider.id == "anthropic" and model.id == "claude-fable-5-1" and any(
         marker in value
         for marker in (
             "does not have access to this model",
@@ -1383,9 +1395,9 @@ def _safe_provider_error(
     status: Optional[int],
 ) -> ProviderRequestError:
 
-    if provider.id == "anthropic" and model.id == "claude-fable-5":
+    if provider.id == "anthropic" and model.id == "claude-fable-5-1":
         privacy_message = (
-            "Anthropic requires 30-day data retention to use Claude Fable 5. "
+            "Anthropic requires 30-day data retention to use Claude Fable 5.1. "
             "Enable it for this workspace in Claude Console under Settings, "
             "Workspaces, Privacy controls, or choose another model."
         )
@@ -1814,15 +1826,15 @@ def self_test() -> bool:
             raise RuntimeError("A provider default model is invalid.")
     expected_direct = {
         "anthropic": {
-            "claude-fable-5",
+            "claude-fable-5-1",
             "claude-opus-5",
             "claude-sonnet-5",
             "claude-haiku-4-5-20251001",
         },
-        "openai": {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
+        "openai": {"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"},
         "google": {
             "gemini-3.1-pro-preview",
-            "gemini-3.7-flash",
+            "gemini-3.8-flash",
             "gemini-3.5-flash-lite",
         },
         "xai": {"grok-4.6", "grok-4.3"},
@@ -1830,16 +1842,26 @@ def self_test() -> bool:
     for provider_id, expected in expected_direct.items():
         if {model.id for model in models_for_provider(provider_id)} != expected:
             raise RuntimeError(f"The direct {provider_id} catalog changed.")
+    expected_migrations = {
+        ("anthropic", "claude-fable-5"): "claude-fable-5-1",
+        ("google", "gemini-3.7-flash"): "gemini-3.8-flash",
+    }
+    if _MODEL_ID_MIGRATIONS != expected_migrations:
+        raise RuntimeError("The saved-model migration catalog changed.")
+    for (provider_id, old_id), new_id in expected_migrations.items():
+        if current_model_id(provider_id, old_id) != new_id:
+            raise RuntimeError("A saved-model migration failed.")
+        model_by_id(provider_id, new_id)
 
-    if native_effort(model_by_id("openai", "gpt-5.6-sol"), "Ultra") != "max":
+    if native_effort(model_by_id("openai", "gpt-6-astra"), "Ultra") != "max":
         raise RuntimeError("OpenAI Ultra effort mapping failed.")
-    if native_effort(model_by_id("google", "gemini-3.7-flash"), "Ultra") != "high":
+    if native_effort(model_by_id("google", "gemini-3.8-flash"), "Ultra") != "high":
         raise RuntimeError("Google effort ceiling mapping failed.")
     if native_effort(model_by_id("xai", "grok-4.6"), "Ultra") != "xhigh":
         raise RuntimeError("xAI frontier effort mapping failed.")
     expected_native_efforts = {
         ("google", "gemini-3.1-pro-preview"): ("low", "medium", "high", "high"),
-        ("google", "gemini-3.7-flash"): ("low", "medium", "high", "high"),
+        ("google", "gemini-3.8-flash"): ("low", "medium", "high", "high"),
         ("google", "gemini-3.5-flash-lite"): ("minimal", "low", "medium", "high"),
         ("xai", "grok-4.6"): ("low", "medium", "high", "xhigh"),
         ("xai", "grok-4.3"): ("none", "low", "medium", "high"),
@@ -1877,15 +1899,16 @@ def self_test() -> bool:
         raise RuntimeError("An adaptive reasoner lost its effort-aware response ceiling.")
 
     expected_prices = {
-        ("anthropic", "claude-fable-5"): (10.0, 50.0),
+        ("anthropic", "claude-fable-5-1"): (10.0, 50.0),
         ("anthropic", "claude-opus-5"): (5.0, 25.0),
         ("anthropic", "claude-sonnet-5"): (2.0, 10.0),
         ("anthropic", _ANTHROPIC_HAIKU_ID): (1.0, 5.0),
+        ("openai", "gpt-6-astra"): (10.0, 50.0),
         ("openai", "gpt-5.6-sol"): (4.0, 20.0),
         ("openai", "gpt-5.6-terra"): (2.0, 12.0),
         ("openai", "gpt-5.6-luna"): (0.2, 1.2),
         ("google", "gemini-3.1-pro-preview"): (2.0, 12.0),
-        ("google", "gemini-3.7-flash"): (1.5, 7.5),
+        ("google", "gemini-3.8-flash"): (1.5, 7.5),
         ("google", "gemini-3.5-flash-lite"): (0.3, 2.5),
         ("xai", "grok-4.6"): (2.0, 6.0),
         ("xai", "grok-4.3"): (1.25, 2.5),
@@ -1903,12 +1926,12 @@ def self_test() -> bool:
         for provider_id, model_id in (
             ("anthropic", "claude-sonnet-5"),
             ("google", "gemini-3.1-pro-preview"),
-            ("google", "gemini-3.7-flash"),
+            ("google", "gemini-3.8-flash"),
         )
     ):
         raise RuntimeError("A time- or context-dependent price lost its note.")
     sonnet = model_by_id("anthropic", "claude-sonnet-5")
-    gemini_flash = model_by_id("google", "gemini-3.7-flash")
+    gemini_flash = model_by_id("google", "gemini-3.8-flash")
     if (
         effective_model_prices(sonnet, date(2026, 8, 31)) != (2.0, 10.0)
         or effective_model_prices(sonnet, date(2026, 9, 1)) != (2.0, 10.0)
@@ -1934,12 +1957,12 @@ def self_test() -> bool:
         for model in MODELS
         if privacy_warning_for_model(model) is not None
     }
-    if warned_models != {("anthropic", "claude-fable-5")}:
+    if warned_models != {("anthropic", "claude-fable-5-1")}:
         raise RuntimeError("Known model privacy warnings changed.")
-    fable = model_by_id("anthropic", "claude-fable-5")
+    fable = model_by_id("anthropic", "claude-fable-5-1")
     fable_warning = privacy_warning_for_model(fable)
     if fable_warning is None:
-        raise RuntimeError("Claude Fable 5 must have a privacy warning.")
+        raise RuntimeError("Claude Fable 5.1 must have a privacy warning.")
     if not all(
         model.requires_privacy_confirmation
         for model in MODELS
@@ -1960,7 +1983,7 @@ def self_test() -> bool:
         or not fable_warning.accept_label
         or not fable_warning.cancel_label
     ):
-        raise RuntimeError("Claude Fable 5 privacy warning is incomplete.")
+        raise RuntimeError("Claude Fable 5.1 privacy warning is incomplete.")
 
     luna = model_by_id("openai", "gpt-5.6-luna")
     expected_cost = 2 * (
@@ -2018,7 +2041,7 @@ def self_test() -> bool:
         "Ultra: Resolve decision-changing ambiguity."
     )
     if _prompt_with_effort(
-        model_by_id("google", "gemini-3.7-flash"),
+        model_by_id("google", "gemini-3.8-flash"),
         rendered_google_prompt,
         "Ultra",
         "high",
@@ -2065,7 +2088,7 @@ def self_test() -> bool:
         raise RuntimeError("Prepared image cache IDs expose or link image data.")
 
     anthropic_payload = _build_anthropic_payload(
-        model_by_id("anthropic", "claude-fable-5"), image_b64, "image/png",
+        model_by_id("anthropic", "claude-fable-5-1"), image_b64, "image/png",
         prompt, anthropic_constraint_schema, "Ultra",
     )
     if anthropic_payload["output_config"]["effort"] != "max":
@@ -2197,7 +2220,7 @@ def self_test() -> bool:
         globals()["_post_json"] = original_post_json
     if warned_result != {"found": True}:
         raise RuntimeError("A warned model did not return its mocked result.")
-    if warned_model_requests != [("anthropic", "claude-fable-5")]:
+    if warned_model_requests != [("anthropic", "claude-fable-5-1")]:
         raise RuntimeError("A warned model did not reach the direct provider call.")
     haiku_low_payload = _build_anthropic_payload(
         haiku, image_b64, "image/png", prompt, schema, "Low"
