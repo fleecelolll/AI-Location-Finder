@@ -25,13 +25,13 @@ SETUP DETAILS
 
 Setup keeps official Python 3.14.7, PySide6-Essentials, HTTPX, settings, and app-specific files private to this folder. It does not require administrator access, change PATH, or install global Python packages. Downloaded runtime archives are verified before use.
 
-Setup creates and validates a normal AI Location Finder shortcut in this folder. Run Installer.bat again to repair setup or after moving the complete folder. Saved provider keys and preferences are preserved.
+Setup creates and validates a folder-local AI Location Finder shortcut that starts the app directly with this folder's private runtime. Run Installer.bat again to repair setup or after moving the complete folder. Saved provider keys and preferences are preserved.
 
 PRIVACY AND REMOVAL
 
 The app has no telemetry, analytics, advertisements, app accounts, or background image uploads. The selected image and analysis context go only to the provider you choose after you start an analysis. Review setup.log before sharing because it can contain local folder paths.
 
-To remove this tool, close it and delete the extracted folder. The shared Fleece Tools .pyw launcher can be restored later with the helper in %LOCALAPPDATA%\Fleece Tools\Python Launcher after every Fleece Tool is closed.
+To remove this tool, close it and delete the extracted folder. This removes its folder-local shortcut, private runtime, dependencies, settings, and app files.
 
 TROUBLESHOOTING
 

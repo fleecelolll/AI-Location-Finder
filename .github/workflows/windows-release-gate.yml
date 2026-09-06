@@ -31,26 +31,26 @@ jobs:
       QT_QPA_PLATFORM: offscreen
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      - name: Verify the shared launcher without changing associations
+      - name: Perform a clean private setup and app self-test through the confirmation prompt
         shell: cmd
-        run: Installer.bat --test-association
-
-      - name: Perform a clean private setup and app self-test
-        shell: cmd
-        run: Installer.bat --yes --no-pause --skip-association
+        run: echo Y| call Installer.bat --no-pause
 
       - name: Verify the repair path against the installed runtime
         shell: cmd
-        run: Installer.bat --yes --no-pause --skip-association
+        run: Installer.bat --yes --no-pause
 
       - name: Upload diagnostics if a gate fails
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: setup-diagnostics-${{ matrix.runner }}-${{ github.run_id }}
           if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
           path: |
             setup.log
             .runtime/error.log
