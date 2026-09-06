@@ -7,7 +7,7 @@ INSTALL
 1. Download the latest release ZIP.
 2. Extract the complete folder.
 3. Double-click Installer.bat.
-4. Press Y once to approve setup.
+4. Press Y once to accept the Terms and bundled Tool License and approve setup.
 5. Leave the setup window open until every check passes.
 6. Double-click the AI Location Finder shortcut created in the folder.
 
@@ -39,8 +39,8 @@ If setup or the shortcut fails, review setup.log and run Installer.bat again. Su
 
 Street and satellite maps need internet access. The bundled Natural Earth map remains available offline.
 
-SOURCE USE
+LICENSE
 
-Copyright 2026 Fleece. All rights reserved. The source is public only for transparency and security review. No permission is granted to copy, modify, redistribute, sell, or publish derivative versions. See LICENSE.
+Copyright 2026 Fleece. This project is source-available, not open source. The bundled LICENSE permits downloading, installing, and running an unmodified official release for lawful personal, non-commercial use. Modification, redistribution, sale, rebranding, and derivative versions remain prohibited. Third-party materials retain their own licenses.
 
 This project was made with AI. Only analyze images you own or have permission to send. Never use an estimated location to stalk, harass, dox, trespass, or endanger anyone.

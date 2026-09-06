@@ -31,7 +31,7 @@ A little tool I made with AI to estimate real-world locations from screenshots a
 1. Download the latest release ZIP.
 2. Extract the complete folder.
 3. Double-click `Installer.bat`.
-4. Press **Y** once to approve setup.
+4. Press **Y** once to accept the Terms and bundled Tool License and approve setup.
 5. Leave the setup window open until every check passes.
 6. Double-click the `AI Location Finder` shortcut created in the folder.
 
@@ -78,9 +78,9 @@ If the `AI Location Finder` shortcut does not open, run `Installer.bat` again an
 
 Street and satellite layers need internet access. The bundled Natural Earth layer remains available as an offline fallback.
 
-## source use
+## license
 
-The source is public for transparency and security review. Copyright 2026 Fleece. All rights reserved. No permission is granted to use, copy, modify, redistribute, sell, or publish derivative versions. See [LICENSE](LICENSE).
+Copyright 2026 Fleece. This project is source-available, not open source. The bundled [LICENSE](LICENSE) permits downloading, installing, and running an unmodified official release for lawful personal, non-commercial use. Modification, redistribution, sale, rebranding, and derivative versions remain prohibited. Third-party materials retain their own licenses.
 
 ## note
 
