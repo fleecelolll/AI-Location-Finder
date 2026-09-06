@@ -84,6 +84,13 @@ set "PYSIDE_VERSION=6.11.2"
 set "PYSIDE_DISTRIBUTION=PySide6-Essentials"
 set "HTTPX_VERSION=0.28.1"
 set "ANYIO_VERSION=4.15.1"
+set "CERTIFI_VERSION=2026.7.22"
+set "H11_VERSION=0.16.0"
+set "HTTPCORE_VERSION=1.0.9"
+set "IDNA_VERSION=3.19"
+set "SHIBOKEN_VERSION=6.11.2"
+set "TYPING_EXTENSIONS_VERSION=4.16.0"
+set "PYTHON_PACKAGES=%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION% shiboken6==%SHIBOKEN_VERSION% httpx==%HTTPX_VERSION% httpcore==%HTTPCORE_VERSION% h11==%H11_VERSION% certifi==%CERTIFI_VERSION% anyio==%ANYIO_VERSION% idna==%IDNA_VERSION% typing-extensions==%TYPING_EXTENSIONS_VERSION%"
 set "PYPI_INDEX=https://pypi.org/simple"
 set "PIP_WHEEL_URL=https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl"
 set "PIP_WHEEL_SHA256=71138ADF1F4CA900CDB7D289C21B7494329F2332B6D85F0E1C42108C0384ED3E"
@@ -637,7 +644,7 @@ set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION%, httpx
 call :LogCurrent
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" %PYTHON_PACKAGES% >>"%LOG%" 2>&1
 set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
 
 :CheckInstalledPackages
@@ -652,7 +659,7 @@ call :LogCurrent
 if /I not "%ENV_MODE%"=="embedded" exit /b 1
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" "%PYSIDE_DISTRIBUTION%==%PYSIDE_VERSION%" "httpx==%HTTPX_VERSION%" "anyio==%ANYIO_VERSION%" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" %PYTHON_PACKAGES% >>"%LOG%" 2>&1
 
 :RepairPackagesFinished
 if errorlevel 1 exit /b 1
@@ -662,7 +669,7 @@ exit /b %ERRORLEVEL%
 :VerifyPythonPackages
 if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
-"%APP_PY%" -I -c "import anyio, httpx, PySide6; from importlib.metadata import version; from PySide6.QtCore import qVersion; from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache; assert version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%'; assert version('httpx') == '%HTTPX_VERSION%'; assert version('anyio') == '%ANYIO_VERSION%'; assert hasattr(httpx, 'Client') and hasattr(httpx, 'AsyncClient'); assert QNetworkAccessManager and QNetworkDiskCache; print('%PYSIDE_DISTRIBUTION%=' + version('%PYSIDE_DISTRIBUTION%')); print('httpx=' + version('httpx')); print('anyio=' + version('anyio')); print('Qt=' + qVersion())" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import anyio, httpx, os, re, PySide6; from importlib.metadata import distributions, version; from PySide6.QtCore import qVersion; from PySide6.QtNetwork import QNetworkAccessManager, QNetworkDiskCache; canonical=lambda value: re.sub(r'[-_.]+','-',value).lower(); expected={canonical(name): package_version for item in os.environ['PYTHON_PACKAGES'].split() for name,package_version in [item.split('==',1)]}; entries=[(canonical(dist.metadata['Name']),dist.version) for dist in distributions() if dist.metadata.get('Name')]; assert len(entries)==len(expected) and dict(entries)==expected; assert hasattr(httpx, 'Client') and hasattr(httpx, 'AsyncClient'); assert QNetworkAccessManager and QNetworkDiskCache; print('Exact private package manifest: ' + ', '.join(name + '=' + expected[name] for name in sorted(expected))); print('Qt=' + qVersion())" >>"%LOG%" 2>&1
 if errorlevel 1 exit /b 1
 if /I not "%ENV_MODE%"=="embedded" exit /b 1
 "%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check check >>"%LOG%" 2>&1
@@ -671,7 +678,7 @@ exit /b %ERRORLEVEL%
 :HasPinnedPackages
 if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
-"%APP_PY%" -I -c "import anyio, httpx, PySide6; from importlib.metadata import version; from PySide6.QtNetwork import QNetworkAccessManager; ok = version('%PYSIDE_DISTRIBUTION%') == '%PYSIDE_VERSION%' and version('httpx') == '%HTTPX_VERSION%' and version('anyio') == '%ANYIO_VERSION%' and bool(QNetworkAccessManager); raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import anyio, httpx, os, re, PySide6; from importlib.metadata import distributions; from PySide6.QtNetwork import QNetworkAccessManager; canonical=lambda value: re.sub(r'[-_.]+','-',value).lower(); expected={canonical(name): package_version for item in os.environ['PYTHON_PACKAGES'].split() for name,package_version in [item.split('==',1)]}; entries=[(canonical(dist.metadata['Name']),dist.version) for dist in distributions() if dist.metadata.get('Name')]; ok=len(entries)==len(expected) and dict(entries)==expected and bool(QNetworkAccessManager); raise SystemExit(0 if ok else 1)" >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 
 :ResetEmbeddedPackages
@@ -828,7 +835,7 @@ set "APP_CHECK_CODE=0"
 "%APP_PY%" -I "%APP_FILE%" --install-check "%CHECK_DIR%" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 if not "%APP_CHECK_CODE%"=="0" goto AppCheckCleanup
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.9'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 6){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.9'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 7){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 
 :AppCheckCleanup

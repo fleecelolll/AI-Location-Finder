@@ -36,6 +36,17 @@ APP_MUTEX_HANDLE = None
 PROVIDER_WARMUP_LOCK = threading.Lock()
 PROVIDER_WARMUP_STARTED = False
 PROVIDER_WARMUP_THREAD = None
+EXPECTED_PRIVATE_PACKAGES = {
+    "anyio": "4.15.1",
+    "certifi": "2026.7.22",
+    "h11": "0.16.0",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "idna": "3.19",
+    "pyside6-essentials": "6.11.2",
+    "shiboken6": "6.11.2",
+    "typing-extensions": "4.16.0",
+}
 
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
@@ -5225,6 +5236,30 @@ def run_isolated_runtime_probe() -> None:
             raise RuntimeError("The isolated windowless-runtime probe reported an unsafe launch state.")
 
 
+def canonical_package_name(name: str) -> str:
+    normalized = name.strip().lower().replace("_", "-").replace(".", "-")
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    return normalized
+
+
+def verify_private_package_manifest() -> dict[str, str]:
+    from importlib.metadata import distributions
+
+    installed_entries = []
+    for distribution in distributions():
+        name = distribution.metadata.get("Name")
+        if name:
+            installed_entries.append((canonical_package_name(name), distribution.version))
+    installed = dict(installed_entries)
+    if (
+        len(installed_entries) != len(EXPECTED_PRIVATE_PACKAGES)
+        or installed != EXPECTED_PRIVATE_PACKAGES
+    ):
+        raise RuntimeError("The private Python dependency manifest is not exact.")
+    return installed
+
+
 def write_self_test_output(folder: Path, checks: list[str], label: str) -> int:
     output = {
         "app": APP_NAME,
@@ -5251,6 +5286,10 @@ def run_install_check(folder: Path) -> int:
     folder = Path(folder).resolve()
     folder.mkdir(parents=True, exist_ok=True)
     checks = []
+
+    if verify_private_package_manifest() != EXPECTED_PRIVATE_PACKAGES:
+        raise RuntimeError("The private package manifest check did not finish.")
+    checks.append("exact pinned private Python dependency manifest")
 
     run_isolated_runtime_probe()
     checks.append("isolated windowless runtime uses private packages and rejects PYTHONPATH injection")
@@ -5288,6 +5327,10 @@ def run_self_test(folder: Path) -> int:
     folder = Path(folder).resolve()
     folder.mkdir(parents=True, exist_ok=True)
     checks = []
+
+    if verify_private_package_manifest() != EXPECTED_PRIVATE_PACKAGES:
+        raise RuntimeError("The private package manifest check did not finish.")
+    checks.append("exact pinned private Python dependency manifest")
 
     if PROVIDER_WARMUP_STARTED:
         raise RuntimeError("Diagnostic startup unexpectedly began provider warmup.")

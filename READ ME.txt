@@ -23,7 +23,7 @@ USE
 
 SETUP DETAILS
 
-Setup keeps official Python 3.14.7, PySide6-Essentials, HTTPX, AnyIO, settings, and app-specific files private to this folder. It does not require administrator access, change PATH, or install global Python packages. Downloaded runtime archives are verified before use.
+Setup keeps official Python 3.14.7, the complete pinned PySide6-Essentials, HTTPX, and AnyIO dependency set, settings, and app-specific files private to this folder. It does not require administrator access, change PATH, or install global Python packages. Downloaded runtime archives are verified before use.
 
 Setup creates and validates a folder-local AI Location Finder shortcut that starts the app directly with this folder's private runtime. Run Installer.bat again to repair setup or after moving the complete folder. Saved provider keys and preferences are preserved.
 
