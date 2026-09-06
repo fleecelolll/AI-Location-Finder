@@ -66,7 +66,7 @@ The selected image and analysis context are sent only to the provider you choose
 
 ## privacy and removal
 
-The app has no telemetry, analytics, advertisements, app accounts, or background image uploads. Online provider and map requests occur only for the features you choose. API keys and optional guidance are encrypted separately for the current Windows user in `.runtime\settings.ini`. Setup logs can contain local folder paths, so review them before sharing.
+The app has no telemetry, analytics, advertisements, app accounts, or background image uploads. The map opens the last layer you selected, or Street on first run, so an online layer may request the currently visible OpenStreetMap or Esri tiles before you start AI analysis. Those map providers do not receive your selected image, AI prompt, or API key. API keys and optional guidance are encrypted separately for the current Windows user in `.runtime\settings.ini`. Setup logs can contain local folder paths, so review them before sharing.
 
 To remove AI Location Finder, close it and delete the extracted folder. This removes its folder-local shortcut, private runtime, dependencies, settings, and app files. The app does not install a background service, add itself to startup, or create an uninstaller entry.
 
