@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -42,7 +42,7 @@ EXPECTED_PRIVATE_PACKAGES = {
     "h11": "0.16.0",
     "httpcore": "1.0.9",
     "httpx": "0.28.1",
-    "idna": "3.19",
+    "idna": "3.20",
     "pyside6-essentials": "6.11.2",
     "shiboken6": "6.11.2",
     "typing-extensions": "4.16.0",
