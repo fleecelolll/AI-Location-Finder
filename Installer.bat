@@ -100,6 +100,7 @@ if defined PROCESSOR_ARCHITEW6432 set "NATIVE_ARCH=%PROCESSOR_ARCHITEW6432%"
 if /I "%NATIVE_ARCH%"=="AMD64" goto ArchitectureX64
 if /I "%NATIVE_ARCH%"=="ARM64" goto ArchitectureArm64
 set "FAIL_MESSAGE=This installer currently supports 64-bit and ARM64 Windows only."
+set "REPAIR_HINT=Use this release on x64 or ARM64 Windows. A 32-bit Windows installation cannot run the bundled private Python."
 goto Failed
 
 :ArchitectureX64
@@ -116,19 +117,23 @@ set "PYTHON_SHA256=F6773983C8959D4281E48C4540CB0BDD23E42391E4E951CE17E7CEB52658F
 :ArchitectureReady
 if not exist "%POWERSHELL_EXE%" (
     set "FAIL_MESSAGE=Trusted Windows PowerShell is missing from the system folder."
+    set "REPAIR_HINT=Run Windows Update or Windows system-file repair, then retry. Do not download PowerShell from an unofficial site."
     goto Failed
 )
 if not exist "%ROBOCOPY_EXE%" (
     set "FAIL_MESSAGE=Trusted Windows file-copy support is missing from the system folder."
+    set "REPAIR_HINT=Run Windows Update or Windows system-file repair, then retry. Do not download Robocopy from an unofficial site."
     goto Failed
 )
 if not exist "%ROOT%LICENSE" (
     set "FAIL_MESSAGE=The bundled Tool License is missing from this folder. Extract a fresh official release and try again."
+    set "REPAIR_HINT=Extract the entire official release ZIP again; keep Installer.bat and LICENSE together."
     goto Failed
 )
 "%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "if([IO.Path]::GetFullPath($env:ROOT).Length -gt [int]$env:MAX_ROOT_LENGTH){exit 2}" >nul 2>nul
 if errorlevel 1 (
     set "FAIL_MESSAGE=The complete app folder path must be 72 characters or fewer. Move the extracted folder closer to the drive root and try again."
+    set "REPAIR_HINT=Move the extracted folder to a shorter path you own, then run Installer.bat there."
     goto Failed
 )
 cls
@@ -162,17 +167,20 @@ if "%ASSUME_YES%"=="1" (
 call :ValidatePrivatePaths
 if errorlevel 1 (
     set "FAIL_MESSAGE=The app folder or one of its private setup paths is not safe to modify. Extract a fresh copy to a normal folder and try again."
+    set "REPAIR_HINT=Re-extract the whole official ZIP to a normal local folder you own, without directory links."
     goto Failed
 )
 set "PATHS_VALIDATED=1"
 call :CheckRootWritePermission
 if errorlevel 1 (
     set "FAIL_MESSAGE=Setup cannot write to this app folder. Move it to a folder owned by this Windows user and try again."
+    set "REPAIR_HINT=Move the whole extracted folder to a writable local folder you own, then retry."
     goto Failed
 )
 if not exist "%RUNTIME%" mkdir "%RUNTIME%" >nul 2>nul
 if not exist "%RUNTIME%" (
     set "FAIL_MESSAGE=Could not create the private runtime folder."
+    set "REPAIR_HINT=Check free disk space and use a writable local folder you own, then retry."
     goto Failed
 )
 call :AcquireSetupLock
@@ -187,11 +195,13 @@ if errorlevel 1 (
 if exist "%LOG%" del /f /q "%LOG%" >nul 2>nul
 if exist "%LOG%" (
     set "FAIL_MESSAGE=The previous setup log could not be replaced safely."
+    set "REPAIR_HINT=Close programs using setup.log, check folder write access, then retry."
     goto Failed
 )
 "%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$stream=[IO.File]::Open($env:LOG,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read);$stream.Dispose()" >nul 2>nul
 if errorlevel 1 (
     set "FAIL_MESSAGE=A fresh private setup log could not be created safely."
+    set "REPAIR_HINT=Check free disk space and use a writable local folder you own, then retry."
     goto Failed
 )
 set "LOG_READY=1"
@@ -199,11 +209,13 @@ set "DIAGNOSTIC_LOG=%LOG%"
 call :EnsureAppClosed
 if errorlevel 1 (
     set "FAIL_MESSAGE=AI Location Finder is open. Close the app before installing or repairing its files."
+    set "REPAIR_HINT=Close AI Location Finder completely, then run Installer.bat again."
     goto Failed
 )
 if not exist "%DOWNLOADS%" mkdir "%DOWNLOADS%" >>"%LOG%" 2>&1
 if not exist "%DOWNLOADS%" (
     set "FAIL_MESSAGE=Could not create the private download folder."
+    set "REPAIR_HINT=Check free disk space and folder write access, then retry."
     goto Failed
 )
 
@@ -220,28 +232,51 @@ call :LogCurrent
 
 if not exist "%APP_FILE%" (
     set "FAIL_MESSAGE=AI Location Finder.pyw is missing from this folder."
+    set "REPAIR_HINT=Extract the entire official release ZIP again; do not run Installer.bat alone."
     goto Failed
 )
 if not exist "%PROVIDERS_FILE%" (
     set "FAIL_MESSAGE=location_providers.py is missing from this folder."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, including all Python modules."
     goto Failed
 )
 if not exist "%MAP_MODULE%" (
     set "FAIL_MESSAGE=location_map.py is missing from this folder."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, including all Python modules."
     goto Failed
 )
 if not exist "%PROMPTS_FILE%" (
     set "FAIL_MESSAGE=location_prompts.py is missing from this folder."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, including all Python modules."
     goto Failed
 )
 if not exist "%CAPTURE_FILE%" (
     set "FAIL_MESSAGE=screen_capture.py is missing from this folder."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, including all Python modules."
     goto Failed
 )
 if not exist "%MAP_ASSET%" (
     set "FAIL_MESSAGE=assets\world_map.png is missing from this folder."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, including its assets folder."
     goto Failed
 )
+
+echo.
+echo   [ PREFLIGHT ]   Bundled files and Windows shortcut
+echo.
+call :CheckBundledFiles
+if errorlevel 1 (
+    set "FAIL_MESSAGE=An app source file or the offline map is unreadable, linked, empty, or invalid. See setup.log for details."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP to a normal local folder, including its assets folder."
+    goto Failed
+)
+call :CheckShortcutSupport
+if errorlevel 1 (
+    set "FAIL_MESSAGE=Windows shortcut support is unavailable, or the existing AI Location Finder shortcut is unsafe. See setup.log for details."
+    set "REPAIR_HINT=Re-extract the official ZIP to a normal folder. If this repeats, ask your Windows administrator about shortcut support."
+    goto Failed
+)
+echo      Bundled files and shortcut support are ready.
 
 echo.
 echo   [ STEP 1 / 3 ]   Private Python environment
@@ -251,6 +286,7 @@ if not errorlevel 1 (
     if exist "%VENV%" call :RemoveDirectoryRobust "%VENV%"
     if exist "%VENV%" (
         set "FAIL_MESSAGE=An old .venv folder could not be removed after private Python was verified."
+        set "REPAIR_HINT=Close programs using this folder, then retry. If it repeats, extract a fresh ZIP to a new folder."
         goto Failed
     )
     echo      Existing private Python is valid. Keeping it.
@@ -285,12 +321,14 @@ if errorlevel 1 (
 )
 if not "%INSTALL_EMBEDDED_CODE%"=="0" (
     set "FAIL_MESSAGE=Private Python could not be installed or verified."
+    set "REPAIR_HINT=Check your connection and free disk space, then retry. Use setup.log to see which download or check failed."
     goto Failed
 )
 
 if exist "%VENV%" call :RemoveDirectoryRobust "%VENV%"
 if exist "%VENV%" (
     set "FAIL_MESSAGE=An invalid old .venv folder could not be removed."
+    set "REPAIR_HINT=Close programs using this folder, then retry. If it repeats, extract a fresh ZIP to a new folder."
     goto Failed
 )
 set "ENV_MODE=embedded"
@@ -301,6 +339,14 @@ set "APP_PYW=%RUNTIME_PYW%"
 call :ValidateSelectedEnvironment
 if errorlevel 1 (
     set "FAIL_MESSAGE=The private Python environment did not pass validation."
+    set "REPAIR_HINT=Check free disk space and retry. If it repeats, re-extract the official ZIP to a new folder."
+    goto Failed
+)
+echo      Checking bundled Python source before package downloads...
+call :CompileBundledSources
+if errorlevel 1 (
+    set "FAIL_MESSAGE=One or more bundled Python source files are invalid or unreadable. See setup.log for details."
+    set "REPAIR_HINT=Re-extract the entire official release ZIP, then rerun Installer.bat."
     goto Failed
 )
 echo      Done.
@@ -324,6 +370,7 @@ if errorlevel 1 (
 )
 if not "%INSTALL_PACKAGES_CODE%"=="0" (
     set "FAIL_MESSAGE=PySide6 and httpx could not be installed and verified."
+    set "REPAIR_HINT=Check your connection and free disk space, then retry. See setup.log for the package error."
     goto Failed
 )
 echo      Done.
@@ -348,6 +395,7 @@ if errorlevel 1 (
 )
 if not "%VERIFY_EVERYTHING_CODE%"=="0" (
     set "FAIL_MESSAGE=One or more final component checks failed."
+    set "REPAIR_HINT=See the last failed check in setup.log, then retry once. If it repeats, re-extract the official ZIP."
     goto Failed
 )
 echo      Creating the AI Location Finder start shortcut...
@@ -359,11 +407,13 @@ if errorlevel 1 (
 call :CreateShortcut
 if errorlevel 1 (
     set "FAIL_MESSAGE=The start shortcut could not be created."
+    set "REPAIR_HINT=Close programs using the shortcut, then rerun setup. If it repeats, extract a fresh ZIP to a normal folder."
     goto Failed
 )
 call :WriteSetupMarker
 if errorlevel 1 (
     set "FAIL_MESSAGE=Setup finished its checks but could not save the completion marker."
+    set "REPAIR_HINT=Check free disk space and folder write access, then rerun setup."
     goto Failed
 )
 echo      Every check passed.
@@ -371,6 +421,7 @@ echo      Every check passed.
 if exist "%DOWNLOADS%" call :RemoveDirectoryRobust "%DOWNLOADS%"
 if exist "%DOWNLOADS%" (
     set "FAIL_MESSAGE=Setup passed its checks but could not safely remove temporary downloads."
+    set "REPAIR_HINT=Close programs using the private download folder, then rerun setup to complete cleanup."
     goto Failed
 )
 set "LOG_MESSAGE=Setup completed successfully."
@@ -422,7 +473,11 @@ exit /b 1
 
 :Failed
 if not defined FAIL_MESSAGE set "FAIL_MESSAGE=Setup stopped because an unexpected error occurred."
+if not defined REPAIR_HINT if "%FAIL_MESSAGE%"=="Setup lost ownership of its private setup lock." set "REPAIR_HINT=Close any other setup window for this tool, then retry. If it repeats, extract a fresh ZIP to a new local folder."
+if not defined REPAIR_HINT set "REPAIR_HINT=Review the last error in setup.log if present, then retry from a fresh official ZIP in a writable local folder."
 set "LOG_MESSAGE=ERROR: %FAIL_MESSAGE%"
+if defined LOG_READY call :LogCurrent
+set "LOG_MESSAGE=HOW TO FIX: %REPAIR_HINT%"
 if defined LOG_READY call :LogCurrent
 if defined PATHS_VALIDATED call :ReleaseSetupLock
 echo.
@@ -431,6 +486,9 @@ echo                     SETUP STOPPED
 echo  ==================================================
 echo.
 echo   %FAIL_MESSAGE%
+echo.
+echo   How to fix it:
+echo   %REPAIR_HINT%
 echo.
 echo   No success was reported because all checks did not pass.
 if defined LOG_READY (
@@ -814,6 +872,18 @@ if not defined VERIFY_HASH exit /b 1
 "%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $stream=[IO.File]::OpenRead($env:VERIFY_FILE); try{$sha=[Security.Cryptography.SHA256]::Create(); try{$actual=([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','')} finally{$sha.Dispose()}} finally{$stream.Dispose()}; if([string]::IsNullOrWhiteSpace($env:VERIFY_HASH)){Write-Output ('Recorded SHA-256: ' + $actual); exit 0}; if($actual -ne $env:VERIFY_HASH){throw ('SHA-256 mismatch. Expected {0}, got {1}' -f $env:VERIFY_HASH,$actual)}; Write-Output ('Verified SHA-256: ' + $actual)" >>"%LOG%" 2>&1
 exit /b %ERRORLEVEL%
 
+:CheckBundledFiles
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$names=@('APP_FILE','PROVIDERS_FILE','MAP_MODULE','PROMPTS_FILE','CAPTURE_FILE');$utf8=[Text.UTF8Encoding]::new($false,$true);foreach($name in $names){$path=[Environment]::GetEnvironmentVariable($name);$item=Get-Item -LiteralPath $path -Force;if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -lt 1 -or $item.Length -gt 2MB){throw ($name+' must be a normal nonempty source file under 2 MB.')};$content=$utf8.GetString([IO.File]::ReadAllBytes($item.FullName));if($content.IndexOf([char]0) -ge 0){throw ($name+' contains a NUL byte.')}};$assets=Get-Item -LiteralPath (Join-Path $env:ROOT 'assets') -Force;if(-not $assets.PSIsContainer -or ($assets.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'The assets folder is missing or linked.'};$map=Get-Item -LiteralPath $env:MAP_ASSET -Force;if($map.PSIsContainer -or ($map.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $map.Length -lt 9 -or $map.Length -gt 20MB){throw 'The offline map is missing, linked, empty, or oversized.'};$stream=[IO.File]::OpenRead($map.FullName);try{$signature=[byte[]]::new(8);if($stream.Read($signature,0,8) -ne 8 -or ([BitConverter]::ToString($signature) -cne '89-50-4E-47-0D-0A-1A-0A')){throw 'The offline map is not a PNG file.'}}finally{$stream.Dispose()};Write-Output 'Bundled source files and offline map passed download preflight.'" >>"%LOG%" 2>&1
+exit /b %ERRORLEVEL%
+
+:CompileBundledSources
+"%APP_PY%" -I -c "import os; from pathlib import Path; names=('APP_FILE','PROVIDERS_FILE','MAP_MODULE','PROMPTS_FILE','CAPTURE_FILE'); files=[Path(os.environ[name]) for name in names]; [compile(path.read_text(encoding='utf-8'), str(path), 'exec') for path in files]; print('Bundled Python source compiled before package downloads.')" >>"%LOG%" 2>&1
+exit /b %ERRORLEVEL%
+
+:CheckShortcutSupport
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop';$path=Join-Path $env:ROOT 'AI Location Finder.lnk';if(Test-Path -LiteralPath $path){$item=Get-Item -LiteralPath $path -Force;if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'The existing AI Location Finder shortcut is not a normal file.'}};$shell=New-Object -ComObject WScript.Shell;if(-not $shell){throw 'Windows shortcut COM support is unavailable.'};$probe=Join-Path $env:RUNTIME ('shortcut-preflight-'+[Guid]::NewGuid().ToString('N')+'.lnk');try{$link=$shell.CreateShortcut($probe);$link.TargetPath=$env:POWERSHELL_EXE;$link.WorkingDirectory=$env:RUNTIME;$link.Save();if(-not(Test-Path -LiteralPath $probe -PathType Leaf)){throw 'Windows did not save a test shortcut.'};$readback=$shell.CreateShortcut($probe);if([IO.Path]::GetFullPath($readback.TargetPath) -ine [IO.Path]::GetFullPath($env:POWERSHELL_EXE)){throw 'Windows did not preserve the test shortcut target.'}}finally{if(Test-Path -LiteralPath $probe){Remove-Item -LiteralPath $probe -Force}};Write-Output 'Windows shortcut creation and readback passed preflight.'" >>"%LOG%" 2>&1
+exit /b %ERRORLEVEL%
+
 :VerifyEverything
 if not defined APP_PY exit /b 1
 if not defined APP_PYW exit /b 1
@@ -835,7 +905,7 @@ set "APP_CHECK_CODE=0"
 "%APP_PY%" -I "%APP_FILE%" --install-check "%CHECK_DIR%" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 if not "%APP_CHECK_CODE%"=="0" goto AppCheckCleanup
-"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.11'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 7){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
+"%POWERSHELL_EXE%" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $items=@(Get-ChildItem -LiteralPath $env:CHECK_DIR -Force); if($items.Count -ne 1){throw 'Install check must create exactly one result file.'}; $item=$items[0]; if($item.PSIsContainer -or $item.Name -cne 'checks.json'){throw 'Install check did not create only checks.json.'}; $data=Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json; if($null -eq $data){throw 'checks.json did not contain a JSON result.'}; foreach($name in @('passed','app','version','network_requests','real_desktop_captures','providers','model_entries','checks')){if($data.PSObject.Properties.Name -notcontains $name){throw ('checks.json is missing ' + $name)}}; if($data.passed -isnot [bool] -or -not $data.passed){throw 'App install check did not pass.'}; if($data.app -isnot [string] -or $data.app -cne 'AI Location Finder'){throw 'checks.json reported the wrong app.'}; if($data.version -isnot [string] -or $data.version -cne '1.0.12'){throw 'checks.json reported the wrong app version.'}; foreach($name in @('network_requests','real_desktop_captures','providers','model_entries')){if($data.$name -isnot [int] -and $data.$name -isnot [long]){throw ('checks.json has a non-integer ' + $name)}}; if($data.network_requests -ne 0 -or $data.real_desktop_captures -ne 0){throw 'App install check used network requests or desktop capture.'}; if($data.providers -ne 4){throw 'App install check reported the wrong provider count.'}; if($data.model_entries -lt 1){throw 'App install check did not report any models.'}; if($data.checks -isnot [System.Array]){throw 'App install checks must be an array.'}; $checks=@($data.checks); if($checks.Count -ne 7){throw 'App install check did not complete the expected checks.'}; foreach($check in $checks){if($check -isnot [string] -or [string]::IsNullOrWhiteSpace($check)){throw 'App install check contained an empty check.'}}; Write-Output 'Safe app install-check output verified.'" >>"%LOG%" 2>&1
 if errorlevel 1 set "APP_CHECK_CODE=1"
 
 :AppCheckCleanup

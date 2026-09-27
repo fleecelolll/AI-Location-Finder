@@ -72,7 +72,7 @@ To remove AI Location Finder, close it and delete the extracted folder. This rem
 
 ## troubleshooting
 
-If setup stops, review `setup.log`, correct the listed problem, and run `Installer.bat` again. Setup reports success only after its dependencies, offline self-tests, and shortcut all pass.
+If setup stops, the window shows the failed check and a short **How to fix it** instruction; the same guidance is saved in `setup.log`. Setup checks bundled source files, the offline map, and Windows shortcut support before downloading large components, then compiles source before downloading app packages. Correct the problem and run `Installer.bat` again. Success is reported only after dependencies, offline self-tests, and the shortcut all pass.
 
 If the `AI Location Finder` shortcut does not open, run `Installer.bat` again and keep the complete extracted folder together. Setup recreates and validates the shortcut for the folder's current location.
 

@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.11"
+APP_VERSION = "1.0.12"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -7287,15 +7287,19 @@ def run_self_test(folder: Path) -> int:
         finally:
             window._choose_report_save_path = original_choose_report
             window._confirm_report_overwrite = original_confirm_overwrite
-        if (
-            confirmation_targets != [normalized_report]
-            or normalized_report.read_bytes() != sentinel_report
-            or not window._report_needs_save
-            or window.last_result is not result
-            or window.status_label.text() != "Report still not saved"
-        ):
+        # open_output_folder resolves the chosen path; hosted Windows temp
+        # folders can be aliases, so compare against that same canonical path.
+        overwrite_probe = {
+            "prompt_canonical": confirmation_targets == [normalized_report.resolve()],
+            "bytes_preserved": normalized_report.read_bytes() == sentinel_report,
+            "result_pending": bool(window._report_needs_save),
+            "result_identity": window.last_result is result,
+            "status_cancelled": window.status_label.text() == "Report still not saved",
+        }
+        if not all(overwrite_probe.values()):
             raise RuntimeError(
-                "Cancelling a normalized-name overwrite changed an existing report."
+                "Cancelling a normalized-name overwrite changed an existing report: "
+                + repr(overwrite_probe)
             )
 
         pending_actions = []
