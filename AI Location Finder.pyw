@@ -7287,8 +7287,9 @@ def run_self_test(folder: Path) -> int:
         finally:
             window._choose_report_save_path = original_choose_report
             window._confirm_report_overwrite = original_confirm_overwrite
+        # open_output_folder resolves the chosen path; hosted Windows temp
+        # folders can be aliases, so compare against that same canonical path.
         overwrite_probe = {
-            "prompt_lexical": confirmation_targets == [normalized_report],
             "prompt_canonical": confirmation_targets == [normalized_report.resolve()],
             "bytes_preserved": normalized_report.read_bytes() == sentinel_report,
             "result_pending": bool(window._report_needs_save),
