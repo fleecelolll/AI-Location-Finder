@@ -58,16 +58,21 @@ $longFixture = New-Fixture ('x' * 70)
 Assert-EarlyFailure $longFixture '72 characters or fewer'
 $missingLicense = New-Fixture 'i j' @('LICENSE')
 Assert-EarlyFailure $missingLicense 'bundled Tool License is missing'
-$unsupportedArch = New-Fixture 'k l'
-$priorArch = $env:PROCESSOR_ARCHITECTURE
-$priorWowArch = $env:PROCESSOR_ARCHITEW6432
-try {
-    $env:PROCESSOR_ARCHITECTURE = 'x86'
-    Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
-    Assert-EarlyFailure $unsupportedArch 'supports 64-bit and ARM64 Windows only'
-} finally {
-    $env:PROCESSOR_ARCHITECTURE = $priorArch
-    if ($priorWowArch) { $env:PROCESSOR_ARCHITEW6432 = $priorWowArch }
+if ($env:RUNNER_ARCH -ne 'ARM64') {
+    $unsupportedArch = New-Fixture 'k l'
+    $priorArch = $env:PROCESSOR_ARCHITECTURE
+    $priorWowArch = $env:PROCESSOR_ARCHITEW6432
+    try {
+        $env:PROCESSOR_ARCHITECTURE = 'x86'
+        Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
+        Assert-EarlyFailure $unsupportedArch 'supports 64-bit and ARM64 Windows only'
+    } finally {
+        $env:PROCESSOR_ARCHITECTURE = $priorArch
+        if ($priorWowArch) { $env:PROCESSOR_ARCHITEW6432 = $priorWowArch }
+    }
+    Write-Host 'Synthetic unsupported-architecture rejection passed on x64.'
+} else {
+    Write-Host 'Skipping synthetic x86 architecture on native ARM64; clean setup tests the supported ARM64 path.'
 }
-Write-Host 'AI Location Finder negative preflight cases passed before Python download, including paths with spaces, overlong paths, and unsupported architecture.'
+Write-Host 'AI Location Finder negative preflight cases passed before Python download, including paths with spaces and overlong paths.'
 exit 0
