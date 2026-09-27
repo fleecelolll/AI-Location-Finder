@@ -35,7 +35,13 @@ To remove this tool, close it and delete the extracted folder. This removes its 
 
 TROUBLESHOOTING
 
-If setup or the shortcut fails, review setup.log and run Installer.bat again. Success is shown only after the dependencies, offline self-tests, and shortcut all pass. Keep the complete extracted folder together.
+If setup stops, the window immediately names the failed check and shows a
+"How to fix it" instruction. The same guidance is saved in setup.log.
+Correct the problem and run Installer.bat again. Before downloading large
+components, setup checks the bundled source files, offline map, and Windows
+shortcut support. It compiles the source before downloading app packages.
+Success is shown only after dependencies, offline self-tests, and the
+shortcut all pass. Keep the complete extracted folder together.
 
 Street and satellite maps need internet access. The bundled Natural Earth map remains available offline.
 

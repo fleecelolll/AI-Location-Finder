@@ -35,13 +35,58 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Perform a clean private setup and app self-test through the confirmation prompt
-        shell: cmd
-        run: echo Y| call Installer.bat --no-pause
+      - name: Build the canonical ZIP and test predownload failures from its extracted files
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'AI-Location-Finder-v1.0.12.zip'
+          $release = Join-Path $env:RUNNER_TEMP 'AI release space'
+          if ($release.Length -gt 72) { throw 'The test release path exceeds the supported limit.' }
+          & ./scripts/Build-ReleaseZip.ps1 -OutputPath $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $release
+          & ./.github/scripts/Test-ReleasePreflight.ps1 -ReleaseRoot $release
 
-      - name: Verify the repair path against the installed runtime
-        shell: cmd
-        run: Installer.bat --yes --no-pause
+      - name: Perform clean private setup from the exact ZIP through the confirmation prompt
+        shell: pwsh
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'AI release space'
+          Push-Location -LiteralPath $release
+          try {
+            & $env:ComSpec /d /c 'echo Y| call "Installer.bat" --no-pause'
+            if ($LASTEXITCODE -ne 0) { throw "Clean setup failed with exit code $LASTEXITCODE" }
+          } finally { Pop-Location }
+
+      - name: Verify repair, shortcut, self-test, and mocked image workflow
+        shell: pwsh
+        run: |
+          $release = Join-Path $env:RUNNER_TEMP 'AI release space'
+          Push-Location -LiteralPath $release
+          try {
+            & $env:ComSpec /d /c 'call "Installer.bat" --yes --no-pause'
+            if ($LASTEXITCODE -ne 0) { throw "Repair failed with exit code $LASTEXITCODE" }
+          } finally { Pop-Location }
+          $shell = New-Object -ComObject WScript.Shell
+          $shortcut = $shell.CreateShortcut((Join-Path $release 'AI Location Finder.lnk'))
+          $runtime = Join-Path $release '.runtime\python'
+          $expectedTarget = Join-Path $runtime 'pythonw.exe'
+          $expectedArguments = '-I "' + (Join-Path $release 'AI Location Finder.pyw') + '"'
+          if ([IO.Path]::GetFullPath($shortcut.TargetPath).TrimEnd('\') -ine [IO.Path]::GetFullPath($expectedTarget).TrimEnd('\') -or $shortcut.Arguments -cne $expectedArguments -or [IO.Path]::GetFullPath($shortcut.WorkingDirectory).TrimEnd('\') -ine [IO.Path]::GetFullPath($release).TrimEnd('\')) {
+            throw 'The release shortcut does not launch the expected private app.'
+          }
+          $checks = Join-Path $env:RUNNER_TEMP 'ai-representative-checks'
+          & (Join-Path $runtime 'python.exe') -I (Join-Path $release 'AI Location Finder.pyw') --self-test $checks
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $checks 'checks.json') -PathType Leaf)) {
+            throw 'The offline self-test did not pass.'
+          }
+          & (Join-Path $runtime 'python.exe') -I (Join-Path $env:GITHUB_WORKSPACE '.github\scripts\Test-RepresentativeWorkflow.py') $release
+          if ($LASTEXITCODE -ne 0) { throw 'The synthetic image-to-result workflow failed.' }
+          $launched = Start-Process -FilePath $shortcut.TargetPath -ArgumentList $shortcut.Arguments -WorkingDirectory $shortcut.WorkingDirectory -WindowStyle Hidden -PassThru
+          try {
+            Start-Sleep -Seconds 3
+            $launched.Refresh()
+            if ($launched.HasExited) { throw 'The release shortcut app exited immediately.' }
+          } finally {
+            if (-not $launched.HasExited) { Stop-Process -Id $launched.Id -Force }
+          }
 
       - name: Upload diagnostics if a gate fails
         if: failure()
@@ -52,6 +97,6 @@ jobs:
           include-hidden-files: true
           retention-days: 7
           path: |
-            setup.log
-            .runtime/error.log
-            .runtime/logs/*.log
+            ${{ runner.temp }}/AI release space/setup.log
+            ${{ runner.temp }}/AI release space/.runtime/error.log
+            ${{ runner.temp }}/AI release space/.runtime/logs/*.log
