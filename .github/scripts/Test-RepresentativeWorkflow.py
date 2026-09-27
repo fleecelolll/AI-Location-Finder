@@ -88,8 +88,15 @@ with tempfile.TemporaryDirectory(prefix="fleece-ai-workflow-") as temporary:
         window.passes_dropdown.select(module.PASS_OPTIONS[0])
         window.set_source_file(image_file)
         window.api_key_input.setText("ci-mock-key-not-a-real-secret")
-        if window.source_file != image_file or window.selected_passes() != 1:
-            raise AssertionError("The synthetic user input was not selected.")
+        # set_source_file resolves the chosen path, including a hosted runner's
+        # temporary-directory alias, before retaining it in the window.
+        source_matches = window.source_file == image_file.resolve()
+        selected_passes = window.selected_passes()
+        if not source_matches or selected_passes != 1:
+            raise AssertionError(
+                "The synthetic user input was not selected: "
+                f"canonical source matched={source_matches}, selected passes={selected_passes}."
+            )
         window.start_analysis()
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
