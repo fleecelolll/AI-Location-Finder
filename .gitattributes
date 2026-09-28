@@ -1,1 +1,2 @@
 *.bat text eol=crlf
+requirements-win-*.txt text eol=lf
