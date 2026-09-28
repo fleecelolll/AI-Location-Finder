@@ -57,9 +57,9 @@ try {
         throw "The archive filename must be AI-Location-Finder-v$version.zip."
     }
 
-    $fixed = @('AI Location Finder.pyw', 'assets/world_map.png', 'Installer.bat', 'LICENSE', 'location_map.py', 'location_prompts.py', 'location_providers.py', 'READ ME.txt', 'screen_capture.py')
+    $fixed = @('AI Location Finder.pyw', 'assets/world_map.png', 'Installer.bat', 'LICENSE', 'location_map.py', 'location_prompts.py', 'location_providers.py', 'READ ME.txt', 'screen_capture.py', 'requirements-win-arm64.txt', 'requirements-win-x64.txt')
     $paths = @($fixed | Sort-Object -CaseSensitive)
-    if ($paths.Count -ne 9 -or (@($paths | Select-Object -Unique)).Count -ne 9) {
+    if ($paths.Count -ne 11 -or (@($paths | Select-Object -Unique)).Count -ne 11) {
         throw 'The release file list is incomplete or contains duplicates.'
     }
     $committed = @{}

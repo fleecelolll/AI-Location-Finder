@@ -115,6 +115,7 @@ set "PYTHON_URL=https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-arm
 set "PYTHON_SHA256=F6773983C8959D4281E48C4540CB0BDD23E42391E4E951CE17E7CEB52658F21C"
 
 :ArchitectureReady
+set "PIP_REQUIREMENTS=%ROOT%requirements-win-%ARCH%.txt"
 if not exist "%POWERSHELL_EXE%" (
     set "FAIL_MESSAGE=Trusted Windows PowerShell is missing from the system folder."
     set "REPAIR_HINT=Run Windows Update or Windows system-file repair, then retry. Do not download PowerShell from an unofficial site."
@@ -626,6 +627,8 @@ exit /b %ERRORLEVEL%
 :InstallPythonPackages
 if not defined APP_PY exit /b 1
 if not exist "%APP_PY%" exit /b 1
+call :ValidatePipRequirements
+if errorlevel 1 exit /b 1
 call :CurrentPackagesFullyHealthy
 if not errorlevel 1 exit /b 0
 call :BeginPackageTransaction
@@ -689,8 +692,21 @@ call :ReplaceDirectory "%PACKAGE_BACKUP%" "%PACKAGE_TARGET%"
 if errorlevel 1 exit /b 1
 exit /b %PACKAGE_TRANSACTION_CODE%
 
+:ValidatePipRequirements
+set "PIP_REQUIREMENTS_SHA256="
+if /I "%ARCH%"=="x64" set "PIP_REQUIREMENTS_SHA256=4ee53884556d7a023b39b94185afde7da41271f4c6fd0a643f0dd0b5fc52b5f0"
+if /I "%ARCH%"=="arm64" set "PIP_REQUIREMENTS_SHA256=933f2adddf5355b05f91c5b46492f8aa8123ffc362e657460562cc8809db3acd"
+if not defined PIP_REQUIREMENTS_SHA256 exit /b 1
+"%APP_PY%" -I -c "import hashlib, os, stat; from pathlib import Path; path=Path(os.environ['PIP_REQUIREMENTS']); info=path.stat(follow_symlinks=False); assert stat.S_ISREG(info.st_mode) and not path.is_symlink() and not (getattr(info, 'st_file_attributes', 0) & 1024), 'Dependency lock is unsafe'; assert hashlib.sha256(path.read_bytes()).hexdigest() == os.environ['PIP_REQUIREMENTS_SHA256'], 'Dependency lock SHA-256 mismatch'" >>"%LOG%" 2>&1
+if not errorlevel 1 exit /b 0
+set "LOG_MESSAGE=The reviewed dependency lock is missing, unsafe, or changed. Re-extract the complete official ZIP."
+call :LogCurrent
+exit /b 1
+
 :InstallEmbeddedPackages
 call :ValidateEmbeddedPython
+if errorlevel 1 exit /b 1
+call :ValidatePipRequirements
 if errorlevel 1 exit /b 1
 call :HasPinnedPackages
 if errorlevel 1 goto InstallFullEmbeddedPackages
@@ -702,7 +718,7 @@ set "LOG_MESSAGE=Installing pinned %PYSIDE_DISTRIBUTION% %PYSIDE_VERSION%, httpx
 call :LogCurrent
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" %PYTHON_PACKAGES% >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --no-cache-dir --only-binary=:all: --require-hashes --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" -r "%PIP_REQUIREMENTS%" >>"%LOG%" 2>&1
 set "PACKAGE_INSTALL_CODE=%ERRORLEVEL%"
 
 :CheckInstalledPackages
@@ -717,7 +733,7 @@ call :LogCurrent
 if /I not "%ENV_MODE%"=="embedded" exit /b 1
 call :ResetEmbeddedPackages
 if errorlevel 1 exit /b 1
-"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" %PYTHON_PACKAGES% >>"%LOG%" 2>&1
+"%APP_PY%" -I -c "import sys; sys.path.insert(0, sys.argv[1]); from pip._internal.cli.main import main; raise SystemExit(main(sys.argv[2:]))" "%PIP_WHEEL%" --isolated --disable-pip-version-check install --upgrade --force-reinstall --no-cache-dir --only-binary=:all: --require-hashes --index-url "%PYPI_INDEX%" --target "%LOCAL_SITE%" -r "%PIP_REQUIREMENTS%" >>"%LOG%" 2>&1
 
 :RepairPackagesFinished
 if errorlevel 1 exit /b 1
