@@ -53,6 +53,11 @@ try {
     $versionMatch = [regex]::Match([Text.Encoding]::UTF8.GetString((Read-TrackedBlob 'AI Location Finder.pyw')), '(?m)^APP_VERSION = "(?<version>\d+\.\d+\.\d+)"\s*$')
     if (-not $versionMatch.Success) { throw 'The app has no unambiguous release version.' }
     $version = $versionMatch.Groups['version'].Value
+    $installerText = [Text.Encoding]::UTF8.GetString((Read-TrackedBlob 'Installer.bat'))
+    $installerVersion = [regex]::Match($installerText, '\$data\.version -cne ''(?<version>\d+\.\d+\.\d+)''')
+    if (-not $installerVersion.Success -or $installerVersion.Groups['version'].Value -cne $version) {
+        throw 'The installer final-check version must match the committed app version.'
+    }
     if ([IO.Path]::GetFileName($output) -cne "AI-Location-Finder-v$version.zip") {
         throw "The archive filename must be AI-Location-Finder-v$version.zip."
     }
