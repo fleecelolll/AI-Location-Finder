@@ -1311,6 +1311,10 @@ class WorldMapView(QWidget):
         )
         request.setTransferTimeout(NETWORK_TIMEOUT_MS)
         reply = manager.get(request)
+        # Keep Qt's unread socket buffer bounded as well as the decoded image.
+        # The extra byte lets readyRead detect and abort oversized responses.
+        reply.setReadBufferSize(MAX_TILE_PAYLOAD_BYTES + 1)
+        reply.readyRead.connect(lambda reply=reply: self._limit_tile_payload(reply))
         self._pending[key] = reply
         reply_id = _qt_object_token(reply)
         self._pending_by_reply_id[reply_id] = key
@@ -1320,6 +1324,10 @@ class WorldMapView(QWidget):
             )
         )
         self._network_request_count += 1
+
+    def _limit_tile_payload(self, reply: QNetworkReply):
+        if shiboken6.isValid(reply) and reply.bytesAvailable() > MAX_TILE_PAYLOAD_BYTES:
+            reply.abort()
 
     def _tile_finished(
         self,
@@ -1349,7 +1357,7 @@ class WorldMapView(QWidget):
                 status_ok = status is None or 200 <= int(status) < 300
             except (TypeError, ValueError):
                 status_ok = False
-            data = bytes(reply.readAll())
+            data = bytes(reply.read(MAX_TILE_PAYLOAD_BYTES + 1))
             pixmap = (
                 _decode_tile_pixmap(data)
                 if error == QNetworkReply.NoError and status_ok

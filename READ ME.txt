@@ -1,5 +1,12 @@
 AI LOCATION FINDER
 
+AUDIT UPDATE v1.0.15
+Shared setup: extract the complete official ZIP, run Installer.bat, accept the
+bundled Terms/Tool License, wait for every final check, then use the folder-local
+shortcut. Setup needs no administrator access and keeps Python private.
+Run setup again to repair or refresh a moved shortcut. Keep the complete folder
+path at most 72 characters and do not use percent signs in its name.
+
 A little tool I made with AI to estimate real-world locations from screenshots and images locally on 64-bit Windows.
 
 INSTALL

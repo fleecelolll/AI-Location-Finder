@@ -20,7 +20,7 @@ from typing import Optional
 
 
 APP_NAME = "AI Location Finder"
-APP_VERSION = "1.0.14"
+APP_VERSION = "1.0.15"
 APP_DIR = Path(__file__).resolve().parent
 RUNTIME_DIR = APP_DIR / ".runtime"
 SETTINGS_PATH = RUNTIME_DIR / "settings.ini"
@@ -1000,11 +1000,18 @@ def result_from_payload(payload: dict) -> GeoResult:
     found = payload.get("found", False)
     if isinstance(found, str):
         found = found.strip().casefold() == "true"
-    if not bool(found):
+    if not isinstance(found, bool):
+        raise AnalysisError("The model returned an invalid location status.")
+    if not found:
         reason = _short_text(payload.get("error"), 300)
         raise AnalysisError(reason or "No usable location could be identified.")
 
     try:
+        if any(
+            isinstance(payload.get(field), bool)
+            for field in ("latitude", "longitude", "confidence_km", "confidence_percent")
+        ):
+            raise ValueError("Boolean coordinate or confidence value")
         latitude = float(payload.get("latitude"))
         longitude = float(payload.get("longitude"))
         confidence_km = float(payload.get("confidence_km", 500))
@@ -1042,6 +1049,8 @@ def result_from_payload(payload: dict) -> GeoResult:
             if not isinstance(item, dict):
                 continue
             try:
+                if isinstance(item.get("latitude"), bool) or isinstance(item.get("longitude"), bool):
+                    continue
                 alt_latitude = float(item.get("latitude"))
                 alt_longitude = float(item.get("longitude"))
             except (TypeError, ValueError):

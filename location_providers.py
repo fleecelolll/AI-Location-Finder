@@ -5,10 +5,13 @@ import atexit
 import base64
 import hashlib
 import json
+import math
 import re
 import secrets
 import threading
 import time
+from contextlib import contextmanager
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Mapping, Optional
@@ -17,6 +20,9 @@ import httpx
 
 
 EFFORT_LABELS = ("Low", "Medium", "High", "Ultra")
+MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_LOCATION_JSON_CHARS = 256 * 1024
+MAX_JSON_RECOVERY_ATTEMPTS = 128
 
 @dataclass(frozen=True, slots=True)
 class ProviderSpec:
@@ -1027,8 +1033,8 @@ def _post_json(
         timeout_value = float(timeout_seconds)
     except (TypeError, ValueError) as error:
         raise ValueError("Timeout must be a number of seconds.") from error
-    if timeout_value <= 0:
-        raise ValueError("Timeout must be greater than zero.")
+    if not math.isfinite(timeout_value) or timeout_value <= 0:
+        raise ValueError("Timeout must be finite and greater than zero.")
     timeout = httpx.Timeout(
         timeout_value,
         connect=min(20.0, timeout_value),
@@ -1057,12 +1063,35 @@ def _post_json(
             "connection",
         ) from error
     try:
-        response = client.post(
+        with client.stream(
+            "POST",
             provider.request_url,
             headers=_request_headers(provider, api_key),
             json=payload,
             timeout=timeout,
-        )
+        ) as streamed:
+            body = bytearray()
+            for chunk in streamed.iter_bytes(chunk_size=65536):
+                _check_cancel(cancel_event)
+                if len(body) + len(chunk) > MAX_PROVIDER_RESPONSE_BYTES:
+                    raise ProviderRequestError(
+                        f"{provider.name} returned too much data. Try again or lower the effort.",
+                        "bad_response",
+                    )
+                body.extend(chunk)
+            # iter_bytes has already decoded compression. Do not decode it twice
+            # when constructing the bounded, fully-read response for JSON parsing.
+            headers = dict(streamed.headers)
+            headers.pop("content-encoding", None)
+            headers.pop("content-length", None)
+            response = httpx.Response(
+                streamed.status_code,
+                headers=headers,
+                content=bytes(body),
+                request=streamed.request,
+            )
+    except ProviderRequestError:
+        raise
     except httpx.TimeoutException:
         if cancel_event is not None and bool(cancel_event.is_set()):
             raise ProviderRequestError("Analysis was cancelled.", "cancelled") from None
@@ -1427,9 +1456,14 @@ def _raise_for_status(
 
 
 def _response_json(response: httpx.Response, provider: ProviderSpec) -> dict[str, Any]:
+    if len(response.content) > MAX_PROVIDER_RESPONSE_BYTES:
+        raise ProviderRequestError(
+            f"{provider.name} returned too much data. Try again or lower the effort.",
+            "bad_response",
+        )
     try:
         payload = response.json()
-    except (ValueError, json.JSONDecodeError):
+    except (ValueError, RecursionError):
         raise ProviderRequestError(
             f"{provider.name} returned an unreadable response. Try again.",
             "bad_response",
@@ -1496,6 +1530,11 @@ def _raise_embedded_error(
 
 
 def _parse_json_text(text: str, provider_name: str) -> dict[str, Any]:
+    if not isinstance(text, str) or len(text) > MAX_LOCATION_JSON_CHARS:
+        raise ProviderRequestError(
+            f"{provider_name} returned invalid or oversized location data. Try again.",
+            "bad_response",
+        )
     candidate = str(text or "").strip().lstrip("\ufeff")
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", candidate, re.I | re.S)
     if fenced:
@@ -1507,30 +1546,29 @@ def _parse_json_text(text: str, provider_name: str) -> dict[str, Any]:
         if isinstance(value, str) and value.strip() != candidate:
             try:
                 nested = json.loads(value)
-            except (TypeError, ValueError, json.JSONDecodeError):
+            except (TypeError, ValueError, RecursionError):
                 return None
             return nested if isinstance(nested, dict) else None
         return None
 
     try:
         parsed = accept(json.loads(candidate))
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (TypeError, ValueError, RecursionError):
         parsed = None
     if parsed is not None:
         return parsed
 
     decoder = json.JSONDecoder()
-    recovered: list[dict[str, Any]] = []
-    for match in re.finditer(r"[\{\[]", candidate):
+    # Search from the end: the final location object is the preferred recovery
+    # target. Bound attempts and decode from an offset to avoid quadratic slices.
+    matches = deque(re.finditer(r"[\{\[]", candidate), maxlen=MAX_JSON_RECOVERY_ATTEMPTS)
+    for match in reversed(matches):
         try:
-            value, _ = decoder.raw_decode(candidate[match.start() :])
-        except (TypeError, ValueError, json.JSONDecodeError):
+            value, _ = decoder.raw_decode(candidate, match.start())
+        except (TypeError, ValueError, RecursionError):
             continue
         parsed = accept(value)
-        if parsed is not None:
-            recovered.append(parsed)
-    for parsed in reversed(recovered):
-        if "found" in parsed:
+        if parsed is not None and "found" in parsed:
             return parsed
     raise ProviderRequestError(
         f"{provider_name} did not return usable location data. Try again.",
@@ -1556,7 +1594,9 @@ def _extract_anthropic_response(payload: dict[str, Any]) -> dict[str, Any]:
     texts = [
         item.get("text", "")
         for item in content_items
-        if isinstance(item, dict) and item.get("type") == "text"
+        if isinstance(item, dict)
+        and item.get("type") == "text"
+        and isinstance(item.get("text", ""), str)
     ]
     return _parse_json_text("".join(texts), "Anthropic")
 
@@ -2914,7 +2954,9 @@ def self_test() -> bool:
     client_options: dict[str, Any] = {}
     post_options: list[dict[str, Any]] = []
     client_instances = 0
-    response_sentinel = object()
+    response_sentinel = httpx.Response(
+        200, json={"found": True}, request=httpx.Request("POST", "https://example.invalid")
+    )
 
     class _DirectClientProbe:
         def __init__(self, **options: Any):
@@ -2926,9 +2968,10 @@ def self_test() -> bool:
         def close(self):
             self.is_closed = True
 
-        def post(self, *_args: Any, **kwargs: Any):
+        @contextmanager
+        def stream(self, *_args: Any, **kwargs: Any):
             post_options.append(kwargs)
-            return response_sentinel
+            yield response_sentinel
 
     original_client = httpx.Client
     _close_http_client()
@@ -2960,7 +3003,8 @@ def self_test() -> bool:
         httpx.Client = original_client
     limits = client_options.get("limits")
     if (
-        direct_responses != [response_sentinel] * 4
+        any(response.json() != {"found": True} for response in direct_responses)
+        or len(direct_responses) != 4
         or client_instances != 1
         or client_options.get("trust_env") is not False
         or client_options.get("follow_redirects") is not False
@@ -3006,7 +3050,7 @@ def self_test() -> bool:
             self.is_closed = True
             self.closed.set()
 
-        def post(self, *_args: Any, **_kwargs: Any):
+        def stream(self, *_args: Any, **_kwargs: Any):
             self.started.set()
             if not self.closed.wait(2.0):
                 raise AssertionError("The request lifecycle watcher did not interrupt I/O.")

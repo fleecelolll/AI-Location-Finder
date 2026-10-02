@@ -38,7 +38,7 @@ jobs:
       - name: Build the canonical ZIP and test predownload failures from its extracted files
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'AI-Location-Finder-v1.0.14.zip'
+          $archive = Join-Path $env:RUNNER_TEMP 'AI-Location-Finder-v1.0.15.zip'
           $release = Join-Path $env:RUNNER_TEMP 'AI release space'
           if ($release.Length -gt 72) { throw 'The test release path exceeds the supported limit.' }
           & ./scripts/Build-ReleaseZip.ps1 -OutputPath $archive

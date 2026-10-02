@@ -2,6 +2,10 @@
 
 # ai location finder
 
+Current audit update: **v1.0.15**. Includes app-specific bug fixes, bounded offline regression/performance tests, and shared setup hardening.
+
+All Fleece desktop tools use the same installation workflow: download the official ZIP, extract the entire folder, run `Installer.bat`, accept the bundled Terms/Tool License, wait for final checks, then open the folder-local shortcut. Setup installs a private runtime without changing system Python or requiring administrator access. Rerun it to repair or refresh a moved shortcut. Keep the full path at most 72 characters, without percent signs. Architecture support and extra components vary by tool; File Converter remains x64-only.
+
 A little tool I made with AI to estimate real-world locations from screenshots and images locally on 64-bit Windows.
 
 <img src="AI%20Location%20Finder.png" alt="AI Location Finder app window" width="760">
